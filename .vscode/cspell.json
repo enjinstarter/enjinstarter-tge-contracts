@@ -1,0 +1,29 @@
+{
+  // https://github.com/streetsidesoftware/vscode-spell-checker/blob/master/packages/client/README.md#cspelljson
+  "version": "0.1",
+  "words": [
+    //
+    "BigNumber",
+    "Blacklister",
+    "Crowdsale",
+    "Ethersproject",
+    "Enjin",
+    "NomicLabs",
+    "Pausable",
+    "Premint",
+    "Revocables",
+    "Solhint",
+    "Timeframe",
+    "Unpaused",
+    "Unvested"
+  ],
+  "ignorePaths": [
+    ".env",
+    "/.devcontainer/devcontainer.json",
+    "/.github/workflows/solidity.yml",
+    "/.vscode/cspell.json",
+    "/.vscode/settings.json",
+    "/package.json",
+    "/package-lock.json"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "editor.formatOnSave": true,
+  // https://code.visualstudio.com/docs/languages/overview#_can-i-map-additional-file-extensions-to-a-language
+  "files.associations": {
+    "**/.vscode/cspell.json": "jsonc"
+  },
+  "solidity.compileUsingRemoteVersion": "v0.7.6+commit.7338295f",
+  "[solidity]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  // Running tests on Visual Studio Code: https://hardhat.org/guides/vscode-tests.html
+  // https://github.com/hbenl/vscode-mocha-test-adapter#configuration
+  "mochaExplorer.require": "hardhat/register",
+  "mochaExplorer.timeout": 0
+}

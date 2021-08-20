@@ -1,0 +1,18 @@
+# Dotenv files
+.env
+.env.*
+!.env.example
+
+# Dependency directories
+node_modules/
+
+# Hardhat files
+cache
+artifacts
+
+# Code coverage reports
+coverage.json
+coverage/
+
+# Gas reports
+gas-usage.txt

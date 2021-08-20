@@ -1,0 +1,12 @@
+# Proposal: Filter using ".gitignore" first, then ".prettierignore" second: https://github.com/prettier/prettier/issues/8506
+
+# Dependency directories
+node_modules/
+
+# Hardhat files
+artifacts
+cache
+
+# Code coverage reports
+coverage.json
+coverage/
