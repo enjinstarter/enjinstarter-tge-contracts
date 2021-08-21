@@ -48,6 +48,7 @@ if (!config.networks) {
 }
 
 config.networks["hardhat"] = {
+  initialBaseFeePerGas: 0,
   accounts: {
     count: 210,
   },
