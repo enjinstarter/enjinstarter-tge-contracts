@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 pragma abicoder v2; // solhint-disable-line
 
@@ -12,6 +13,7 @@ import "./interfaces/IEjsCrowdsale.sol";
 
 /**
  * @title EjsCrowdsale
+ * @author Enjinstarter
  * @dev Crowdsale where tokens are minted in each purchase.
  */
 contract EjsCrowdsale is

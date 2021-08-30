@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./interfaces/IVesting.sol";
 
+/**
+ * @title Vesting
+ * @author Enjinstarter
+ */
 contract Vesting is IVesting {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;

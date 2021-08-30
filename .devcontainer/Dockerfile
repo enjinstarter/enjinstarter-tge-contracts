@@ -1,5 +1,5 @@
 FROM node:lts-buster
-ARG SLITHER_VERSION=0.8.0
+ARG SLITHER_VERSION=0.8.1
 ARG SOLC_VERSION=0.7.6
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 
+/**
+ * @title IWhitelist
+ * @author Enjinstarter
+ */
 interface IWhitelist {
     function addWhitelisted(address account) external;
 

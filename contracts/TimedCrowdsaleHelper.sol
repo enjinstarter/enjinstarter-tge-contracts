@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 pragma abicoder v2; // solhint-disable-line
 
@@ -6,6 +7,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 
 /**
  * @title TimedCrowdsaleHelper
+ * @author Enjinstarter
  * @dev Helper for crowdsale accepting contributions only within a time frame.
  */
 contract TimedCrowdsaleHelper {

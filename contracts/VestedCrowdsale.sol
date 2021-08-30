@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 
 import "./Crowdsale.sol";
@@ -6,6 +7,7 @@ import "./interfaces/IVesting.sol";
 
 /**
  * @title VestedCrowdsale
+ * @author Enjinstarter
  * @dev Extension of Crowdsale contract where purchased tokens are transferred to a vesting schedule.
  */
 abstract contract VestedCrowdsale is Crowdsale {

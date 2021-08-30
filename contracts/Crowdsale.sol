@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 pragma abicoder v2; // solhint-disable-line
 
@@ -9,6 +10,7 @@ import "./interfaces/ICrowdsale.sol";
 
 /**
  * @title Crowdsale
+ * @author Enjinstarter
  * @dev Crowdsale is a base contract for managing a token crowdsale,
  * allowing investors to purchase tokens with ERC20 tokens. This contract implements
  * such functionality in its most fundamental form and can be extended to provide additional

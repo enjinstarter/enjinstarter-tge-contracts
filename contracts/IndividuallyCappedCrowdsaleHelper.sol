@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2021 Enjinstarter
 pragma solidity ^0.7.6;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 
 /**
  * @title IndividuallyCappedCrowdsaleHelper
+ * @author Enjinstarter
  * @dev Helper for crowdsale with per beneficiary cap.
  */
 contract IndividuallyCappedCrowdsaleHelper {
