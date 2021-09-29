@@ -58,23 +58,27 @@ if (kovanPrivateKey) {
   config.networks["kovan"] = {
     url: `https://kovan.infura.io/v3/${infuraProjectId}`,
     accounts: [`0x${kovanPrivateKey}`],
-    gasMultiplier: 2, // For testnet only
+    gasPrice: 2000000000, // For testnet only, 2 Gwei
   };
 }
 
 if (ropstenPrivateKey) {
+  // const alchemyApiKey = process.env.ROPSTEN_ALCHEMY_API_KEY;
+
   config.networks["ropsten"] = {
-    url: `https://ropsten.infura.io/v3/${infuraProjectId}`,
+    url: `https://ropsten.infura.io/v3/${infuraProjectId}`, // https://eth-ropsten.alchemyapi.io/v2/${alchemyApiKey}
     accounts: [`0x${ropstenPrivateKey}`],
-    gasMultiplier: 2, // For testnet only
+    gasPrice: 2000000000, // For testnet only, 2 Gwei
   };
 }
 
 if (mainnetPrivateKey) {
+  // const alchemyApiKey = process.env.MAINNET_ALCHEMY_API_KEY;
+
   config.networks["mainnet"] = {
-    url: `https://mainnet.infura.io/v3/${infuraProjectId}`,
+    url: `https://mainnet.infura.io/v3/${infuraProjectId}`, // https://eth-mainnet.alchemyapi.io/v2/${alchemyApiKey}
     accounts: [`0x${mainnetPrivateKey}`],
-    gasMultiplier: 1.05,
+    gasPrice: 60000000000, // 60 Gwei
   };
 }
 

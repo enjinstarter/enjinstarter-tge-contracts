@@ -38,6 +38,7 @@ contract Vesting is IVesting {
     address public vestingAdmin;
     address public tokenAddress;
     uint256 public totalGrantAmount;
+    uint256 public totalReleasedAmount;
     uint256 public scheduleStartTimestamp;
     bool public allowAccumulate;
 
@@ -127,6 +128,7 @@ contract Vesting is IVesting {
     {
         uint256 unusedAmount = IERC20(tokenAddress)
             .balanceOf(address(this))
+            .add(totalReleasedAmount)
             .sub(totalGrantAmount);
         require(unusedAmount > 0, "Vesting: nothing to transfer");
 
@@ -484,6 +486,7 @@ contract Vesting is IVesting {
         require(amount > 0, "Vesting: zero amount");
 
         _released[account] = _released[account].add(amount);
+        totalReleasedAmount = totalReleasedAmount.add(amount);
 
         emit TokensReleased(account, amount);
 

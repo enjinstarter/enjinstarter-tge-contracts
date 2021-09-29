@@ -46,6 +46,7 @@ describe("Vesting", () => {
     const expectVestingAdmin = defaultVestingAdmin;
     const expectTokenAddress = ejsToken.address;
     const expectTotalGrantAmount = BN_ZERO;
+    const expectTotalReleasedAmount = BN_ZERO;
     const expectScheduleStartTimestamp = BN_ZERO;
     const expectVestingSchedule = {
       cliffDurationDays: new BN("30"),
@@ -61,6 +62,7 @@ describe("Vesting", () => {
     const vestingAdmin = await vesting.vestingAdmin();
     const tokenAddress = await vesting.tokenAddress();
     const totalGrantAmount = await vesting.totalGrantAmount();
+    const totalReleasedAmount = await vesting.totalReleasedAmount();
     const scheduleStartTimestamp = await vesting.scheduleStartTimestamp();
     const vestingSchedule = await vesting.getVestingSchedule();
 
@@ -85,6 +87,11 @@ describe("Vesting", () => {
     assert.ok(
       totalGrantAmount.eq(expectTotalGrantAmount),
       `Total grant amount is ${totalGrantAmount} instead of ${expectTotalGrantAmount}`
+    );
+
+    assert.ok(
+      totalReleasedAmount.eq(expectTotalReleasedAmount),
+      `Total released amount is ${totalReleasedAmount} instead of ${expectTotalReleasedAmount}`
     );
 
     assert.ok(
@@ -365,9 +372,11 @@ describe("Vesting", () => {
     const expectIsRevokedBeforeAdd = false;
     const expectIsActiveBeforeAdd = false;
     const expectTotalGrantAmountBeforeAdd = BN_ZERO;
+    const expectTotalReleasedAmountBeforeAdd = BN_ZERO;
 
     const vestingGrantAccountBeforeAdd = await vesting.vestingGrantFor(expectAddVestingGrantAccount);
     const totalGrantAmountBeforeAdd = await vesting.totalGrantAmount();
+    const totalReleasedAmountBeforeAdd = await vesting.totalReleasedAmount();
 
     assert.ok(
       vestingGrantAccountBeforeAdd[0].eq(expectGrantAmountBeforeAdd),
@@ -397,11 +406,17 @@ describe("Vesting", () => {
       `Total grant amount before add is ${totalGrantAmountBeforeAdd} instead of ${expectTotalGrantAmountBeforeAdd}`
     );
 
+    assert.ok(
+      totalReleasedAmountBeforeAdd.eq(expectTotalReleasedAmountBeforeAdd),
+      `Total released amount before add is ${totalReleasedAmountBeforeAdd} instead of ${expectTotalReleasedAmountBeforeAdd}`
+    );
+
     const expectGrantAmountAfterAdd = ether("889054.74546856406126800");
     const expectIsRevocableAfterAdd = false;
     const expectIsRevokedAfterAdd = false;
     const expectIsActiveAfterAdd = true;
     const expectTotalGrantAmountAfterAdd = expectGrantAmountAfterAdd;
+    const expectTotalReleasedAmountAfterAdd = BN_ZERO;
 
     const addVestingGrant = await vesting.addVestingGrant(
       expectAddVestingGrantAccount,
@@ -418,6 +433,7 @@ describe("Vesting", () => {
 
     const vestingGrantAccountAfterAdd = await vesting.vestingGrantFor(expectAddVestingGrantAccount);
     const totalGrantAmountAfterAdd = await vesting.totalGrantAmount();
+    const totalReleasedAmountAfterAdd = await vesting.totalReleasedAmount();
 
     assert.ok(
       vestingGrantAccountAfterAdd[0].eq(expectGrantAmountAfterAdd),
@@ -445,6 +461,11 @@ describe("Vesting", () => {
     assert.ok(
       totalGrantAmountAfterAdd.eq(expectTotalGrantAmountAfterAdd),
       `Total grant amount after add is ${totalGrantAmountAfterAdd} instead of ${expectTotalGrantAmountAfterAdd}`
+    );
+
+    assert.ok(
+      totalReleasedAmountAfterAdd.eq(expectTotalReleasedAmountAfterAdd),
+      `Total released amount after add is ${totalReleasedAmountAfterAdd} instead of ${expectTotalReleasedAmountAfterAdd}`
     );
   });
 
@@ -598,11 +619,13 @@ describe("Vesting", () => {
     const expectIsRevokedBeforeRevoke = false;
     const expectIsActiveBeforeRevoke = true;
     const expectTotalGrantAmountBeforeRevoke = addGrantAmount;
+    const expectTotalReleasedAmountBeforeRevoke = BN_ZERO;
     const expectRevokedBeforeRevoked = false;
     const expectReleasedAmountBeforeRevoked = BN_ZERO;
 
     const vestingGrantAccountBeforeRevoke = await vesting.vestingGrantFor(expectRevokeVestingGrantAccount);
     const totalGrantAmountBeforeRevoke = await vesting.totalGrantAmount();
+    const totalReleasedAmountBeforeRevoke = await vesting.totalReleasedAmount();
     const revokedBeforeRevoke = await vesting.revoked(expectRevokeVestingGrantAccount);
     const releasedAmountBeforeRevoke = await vesting.releasedAmountFor(expectRevokeVestingGrantAccount);
 
@@ -634,6 +657,11 @@ describe("Vesting", () => {
       `Total grant amount before revoke is ${totalGrantAmountBeforeRevoke} instead of ${expectTotalGrantAmountBeforeRevoke}`
     );
 
+    assert.ok(
+      totalReleasedAmountBeforeRevoke.eq(expectTotalReleasedAmountBeforeRevoke),
+      `Total released amount before revoke is ${totalReleasedAmountBeforeRevoke} instead of ${expectTotalReleasedAmountBeforeRevoke}`
+    );
+
     assert.strictEqual(
       revokedBeforeRevoke,
       expectRevokedBeforeRevoked,
@@ -652,6 +680,7 @@ describe("Vesting", () => {
     const expectIsRevokedAfterRevoke = true;
     const expectIsActiveAfterRevoke = true;
     const expectTotalGrantAmountAfterRevoke = BN_ZERO;
+    const expectTotalReleasedAmountAfterRevoke = BN_ZERO;
     const expectRevokedAfterRevoked = true;
     const expectReleasedAmountAfterRevoked = BN_ZERO;
 
@@ -668,6 +697,7 @@ describe("Vesting", () => {
 
     const vestingGrantAccountAfterRevoke = await vesting.vestingGrantFor(expectRevokeVestingGrantAccount);
     const totalGrantAmountAfterRevoke = await vesting.totalGrantAmount();
+    const totalReleasedAmountAfterRevoke = await vesting.totalReleasedAmount();
     const revokedAfterRevoke = await vesting.revoked(expectRevokeVestingGrantAccount);
     const releasedAmountAfterRevoke = await vesting.releasedAmountFor(expectRevokeVestingGrantAccount);
 
@@ -697,6 +727,11 @@ describe("Vesting", () => {
     assert.ok(
       totalGrantAmountAfterRevoke.eq(expectTotalGrantAmountAfterRevoke),
       `Total grant amount after revoke is ${totalGrantAmountAfterRevoke} instead of ${expectTotalGrantAmountAfterRevoke}`
+    );
+
+    assert.ok(
+      totalReleasedAmountAfterRevoke.eq(expectTotalReleasedAmountAfterRevoke),
+      `Total released amount after revoke is ${totalReleasedAmountAfterRevoke} instead of ${expectTotalReleasedAmountAfterRevoke}`
     );
 
     assert.strictEqual(
@@ -731,11 +766,13 @@ describe("Vesting", () => {
     const expectIsRevokedBeforeRevoke = false;
     const expectIsActiveBeforeRevoke = true;
     const expectTotalGrantAmountBeforeRevoke = addGrantAmount;
+    const expectTotalReleasedAmountBeforeRevoke = BN_ZERO;
     const expectRevokedBeforeRevoked = false;
     const expectReleasedAmountBeforeRevoked = BN_ZERO;
 
     const vestingGrantAccountBeforeRevoke = await vesting.vestingGrantFor(expectRevokeVestingGrantAccount);
     const totalGrantAmountBeforeRevoke = await vesting.totalGrantAmount();
+    const totalReleasedAmountBeforeRevoke = await vesting.totalReleasedAmount();
     const revokedBeforeRevoke = await vesting.revoked(expectRevokeVestingGrantAccount);
     const releasedAmountBeforeRevoke = await vesting.releasedAmountFor(expectRevokeVestingGrantAccount);
 
@@ -767,6 +804,11 @@ describe("Vesting", () => {
       `Total grant amount before revoke is ${totalGrantAmountBeforeRevoke} instead of ${expectTotalGrantAmountBeforeRevoke}`
     );
 
+    assert.ok(
+      totalReleasedAmountBeforeRevoke.eq(expectTotalReleasedAmountBeforeRevoke),
+      `Total released amount before revoke is ${totalReleasedAmountBeforeRevoke} instead of ${expectTotalReleasedAmountBeforeRevoke}`
+    );
+
     assert.strictEqual(
       revokedBeforeRevoke,
       expectRevokedBeforeRevoked,
@@ -785,6 +827,7 @@ describe("Vesting", () => {
     const expectIsRevokedAfterRevoke = true;
     const expectIsActiveAfterRevoke = true;
     const expectTotalGrantAmountAfterRevoke = BN_ZERO;
+    const expectTotalReleasedAmountAfterRevoke = BN_ZERO;
     const expectRevokedAfterRevoked = true;
     const expectReleasedAmountAfterRevoked = BN_ZERO;
 
@@ -801,6 +844,7 @@ describe("Vesting", () => {
 
     const vestingGrantAccountAfterRevoke = await vesting.vestingGrantFor(expectRevokeVestingGrantAccount);
     const totalGrantAmountAfterRevoke = await vesting.totalGrantAmount();
+    const totalReleasedAmountAfterRevoke = await vesting.totalReleasedAmount();
     const revokedAfterRevoke = await vesting.revoked(expectRevokeVestingGrantAccount);
     const releasedAmountAfterRevoke = await vesting.releasedAmountFor(expectRevokeVestingGrantAccount);
 
@@ -830,6 +874,11 @@ describe("Vesting", () => {
     assert.ok(
       totalGrantAmountAfterRevoke.eq(expectTotalGrantAmountAfterRevoke),
       `Total grant amount after revoke is ${totalGrantAmountAfterRevoke} instead of ${expectTotalGrantAmountAfterRevoke}`
+    );
+
+    assert.ok(
+      totalReleasedAmountAfterRevoke.eq(expectTotalReleasedAmountAfterRevoke),
+      `Total released amount after revoke is ${totalReleasedAmountAfterRevoke} instead of ${expectTotalReleasedAmountAfterRevoke}`
     );
 
     assert.strictEqual(
@@ -1985,6 +2034,151 @@ describe("Vesting", () => {
     );
   });
 
+  it("should allow governance account to transfer unused tokens with some tokens already released", async () => {
+    const beneficiary = accounts[5];
+
+    const expectedGrantAmount = ether("558172.956967211364830000");
+    await vesting.addVestingGrant(beneficiary, expectedGrantAmount, true, { from: defaultVestingAdmin });
+
+    const currentBlockNumber = await web3.eth.getBlockNumber();
+    const currentBlockTimestamp = await testHelpers.getBlockTimestamp(currentBlockNumber);
+    const expectScheduleStartTimestamp = currentBlockTimestamp.add(BN_SECONDS_IN_HOUR);
+
+    await vesting.setScheduleStartTimestamp(expectScheduleStartTimestamp, { from: defaultVestingAdmin });
+
+    // advance to after first interval end
+    const vestingSchedule = await vesting.getVestingSchedule();
+    const firstIntervalEndTimestamp = expectScheduleStartTimestamp.add(
+      vestingSchedule.cliffDurationDays.add(vestingSchedule.intervalDays).mul(BN_SECONDS_IN_DAY)
+    );
+    await time.increaseTo(firstIntervalEndTimestamp.add(time.duration.seconds(10)));
+
+    const release = await vesting.release({ from: beneficiary });
+
+    await time.increase(time.duration.minutes(60));
+
+    const totalReleasedAmount = await vesting.totalReleasedAmount();
+
+    const expectReleaseAmount = release.receipt.logs[0].args.amount;
+    const expectTotalReleasedAmount = expectReleaseAmount;
+    const expectTransferAmount = defaultGovernanceMintAmount.sub(expectedGrantAmount);
+
+    const balanceOfVestingContractBeforeTransfer = await ejsToken.balanceOf(vesting.address);
+    const balanceOfGovernanceAccountBeforeTransfer = await ejsToken.balanceOf(defaultGovernanceAccount);
+
+    const transferUnusedTokens = await vesting.transferUnusedTokens({ from: defaultGovernanceAccount });
+
+    await expectEvent.inTransaction(transferUnusedTokens.tx, ejsToken, "Transfer", {
+      from: vesting.address,
+      to: defaultGovernanceAccount,
+      value: expectTransferAmount,
+    });
+
+    const balanceOfVestingContractAfterTransfer = await ejsToken.balanceOf(vesting.address);
+    const balanceOfGovernanceAccountAfterTransfer = await ejsToken.balanceOf(defaultGovernanceAccount);
+
+    const vestingContractDeductedAmount = balanceOfVestingContractBeforeTransfer.sub(
+      balanceOfVestingContractAfterTransfer
+    );
+    const governanceAccountReceiveAmount = balanceOfGovernanceAccountAfterTransfer.sub(
+      balanceOfGovernanceAccountBeforeTransfer
+    );
+
+    assert.ok(
+      totalReleasedAmount.eq(expectTotalReleasedAmount),
+      `Total released amount is ${totalReleasedAmount} instead of ${expectTotalReleasedAmount}`
+    );
+
+    assert.ok(
+      vestingContractDeductedAmount.eq(expectTransferAmount),
+      `Vesting contract deducted amount is ${vestingContractDeductedAmount} instead of ${expectTransferAmount}`
+    );
+
+    assert.ok(
+      governanceAccountReceiveAmount.eq(expectTransferAmount),
+      `Governance account received amount is ${governanceAccountReceiveAmount} instead of ${expectTransferAmount}`
+    );
+  });
+
+  it("should allow governance account to transfer unused tokens with one grant revoked and some tokens already released", async () => {
+    const beneficiary = accounts[5];
+
+    const expectedGrantAmount = ether("444699.758591481534168000");
+    await vesting.addVestingGrant(beneficiary, expectedGrantAmount, true, { from: defaultVestingAdmin });
+
+    const currentBlockNumber = await web3.eth.getBlockNumber();
+    const currentBlockTimestamp = await testHelpers.getBlockTimestamp(currentBlockNumber);
+    const expectScheduleStartTimestamp = currentBlockTimestamp.add(BN_SECONDS_IN_HOUR);
+
+    await vesting.setScheduleStartTimestamp(expectScheduleStartTimestamp, { from: defaultVestingAdmin });
+
+    // advance to after first interval end
+    const vestingSchedule = await vesting.getVestingSchedule();
+    const firstIntervalEndTimestamp = expectScheduleStartTimestamp.add(
+      vestingSchedule.cliffDurationDays.add(vestingSchedule.intervalDays).mul(BN_SECONDS_IN_DAY)
+    );
+    await time.increaseTo(firstIntervalEndTimestamp.add(time.duration.seconds(10)));
+
+    const release = await vesting.release({ from: beneficiary });
+
+    await time.increase(time.duration.minutes(60));
+
+    const totalReleasedAmount = await vesting.totalReleasedAmount();
+
+    const expectReleaseAmount = release.receipt.logs[0].args.amount;
+    const expectTotalReleasedAmount = expectReleaseAmount;
+    const expectRemainderAmountAfterRevoke = expectedGrantAmount.sub(expectReleaseAmount);
+
+    const revokeVestingGrant = await vesting.revokeVestingGrant(beneficiary, { from: defaultVestingAdmin });
+
+    expectEvent(revokeVestingGrant, "VestingGrantRevoked", {
+      account: beneficiary,
+      remainderAmount: expectRemainderAmountAfterRevoke,
+      grantAmount: expectedGrantAmount,
+      releasedAmount: expectReleaseAmount,
+    });
+
+    const expectTransferAmount = defaultGovernanceMintAmount
+      .add(expectRemainderAmountAfterRevoke)
+      .sub(expectedGrantAmount);
+
+    const balanceOfVestingContractBeforeTransfer = await ejsToken.balanceOf(vesting.address);
+    const balanceOfGovernanceAccountBeforeTransfer = await ejsToken.balanceOf(defaultGovernanceAccount);
+
+    const transferUnusedTokens = await vesting.transferUnusedTokens({ from: defaultGovernanceAccount });
+
+    await expectEvent.inTransaction(transferUnusedTokens.tx, ejsToken, "Transfer", {
+      from: vesting.address,
+      to: defaultGovernanceAccount,
+      value: expectTransferAmount,
+    });
+
+    const balanceOfVestingContractAfterTransfer = await ejsToken.balanceOf(vesting.address);
+    const balanceOfGovernanceAccountAfterTransfer = await ejsToken.balanceOf(defaultGovernanceAccount);
+
+    assert.ok(
+      totalReleasedAmount.eq(expectTotalReleasedAmount),
+      `Total released amount is ${totalReleasedAmount} instead of ${expectTotalReleasedAmount}`
+    );
+
+    const vestingContractDeductedAmount = balanceOfVestingContractBeforeTransfer.sub(
+      balanceOfVestingContractAfterTransfer
+    );
+    const governanceAccountReceiveAmount = balanceOfGovernanceAccountAfterTransfer.sub(
+      balanceOfGovernanceAccountBeforeTransfer
+    );
+
+    assert.ok(
+      vestingContractDeductedAmount.eq(expectTransferAmount),
+      `Vesting contract deducted amount is ${vestingContractDeductedAmount} instead of ${expectTransferAmount}`
+    );
+
+    assert.ok(
+      governanceAccountReceiveAmount.eq(expectTransferAmount),
+      `Governance account received amount is ${governanceAccountReceiveAmount} instead of ${expectTransferAmount}`
+    );
+  });
+
   it("should not allow non governance account to transfer unused tokens", async () => {
     const nonGovernanceAccount = accounts[9];
 
@@ -2021,6 +2215,7 @@ describe("Vesting", () => {
     const expectIsRevokedBeforeAdd = false;
     const expectIsActiveBeforeAdd = false;
     const expectTotalGrantAmountBeforeAdd = BN_ZERO;
+    const expectTotalReleasedAmountBeforeAdd = BN_ZERO;
 
     for (let i = 0; i < expectAddVestingGrantAccounts.length; i++) {
       // console.log(
@@ -2029,6 +2224,7 @@ describe("Vesting", () => {
 
       const vestingGrantAccountBeforeAdd = await vesting.vestingGrantFor(expectAddVestingGrantAccounts[i]);
       const totalGrantAmountBeforeAdd = await vesting.totalGrantAmount();
+      const totalReleasedAmountBeforeAdd = await vesting.totalReleasedAmount();
 
       assert.ok(
         vestingGrantAccountBeforeAdd[0].eq(expectGrantAmountBeforeAdd),
@@ -2056,6 +2252,11 @@ describe("Vesting", () => {
       assert.ok(
         totalGrantAmountBeforeAdd.eq(expectTotalGrantAmountBeforeAdd),
         `${i}: Total grant amount before add is ${totalGrantAmountBeforeAdd} instead of ${expectTotalGrantAmountBeforeAdd}`
+      );
+
+      assert.ok(
+        totalReleasedAmountBeforeAdd.eq(expectTotalReleasedAmountBeforeAdd),
+        `${i}: Total released amount before add is ${totalReleasedAmountBeforeAdd} instead of ${expectTotalReleasedAmountBeforeAdd}`
       );
     }
 
@@ -2119,11 +2320,18 @@ describe("Vesting", () => {
     const expectTotalGrantAmountAfterAdd = expectAddVestingGrantAmounts.reduce((accumulator, currentValue) =>
       accumulator.add(currentValue)
     );
+    const expectTotalReleasedAmountAfterAdd = BN_ZERO;
     const totalGrantAmountAfterAdd = await vesting.totalGrantAmount();
+    const totalReleasedAmountAfterAdd = await vesting.totalReleasedAmount();
 
     assert.ok(
       totalGrantAmountAfterAdd.eq(expectTotalGrantAmountAfterAdd),
       `Total grant amount after add is ${totalGrantAmountAfterAdd} instead of ${expectTotalGrantAmountAfterAdd}`
+    );
+
+    assert.ok(
+      totalReleasedAmountAfterAdd.eq(expectTotalReleasedAmountAfterAdd),
+      `Total released amount after add is ${totalReleasedAmountAfterAdd} instead of ${expectTotalReleasedAmountAfterAdd}`
     );
 
     await expectRevert(

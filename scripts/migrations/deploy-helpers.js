@@ -14,9 +14,11 @@ async function deployContract(contractFactory, constructorArgs, logConstructorAr
 }
 
 async function contractDeployed(contract, isPublicNetwork) {
+  console.log(`Waiting for contract deployment at ${contract.address}`);
   await contract.deployed();
 
   if (isPublicNetwork) {
+    console.log(`Waiting for 5 confirmations of contract at ${contract.address}`);
     await contract.deployTransaction.wait(5);
   }
 

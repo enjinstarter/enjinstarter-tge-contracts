@@ -112,7 +112,7 @@ async function newEjsCrowdsale(
 ) {
   const defaults = {
     lotSize: BigNumber.from("25000"), // USD200 worth of tokens being sold
-    maxLots: BigNumber.from("20"),
+    maxLots: BigNumber.from("10"),
   };
 
   const lotsInfoValue = await getValueOrDefault(lotsInfo, () => {
@@ -128,7 +128,7 @@ async function newEjsCrowdsale(
 
 async function newIndividuallyCappedCrowdsaleHelper(tokenCap) {
   const defaults = {
-    tokenCap: BigNumber.from("500000"), // max 20 lots (USD4000 worth of tokens being sold equivalent to 500000 tokens)
+    tokenCap: BigNumber.from("250000"), // max 10 lots (USD2000 worth of tokens being sold equivalent to 250000 tokens)
   };
 
   const tokenCapValue = await getValueOrDefault(tokenCap, () => defaults.tokenCap);

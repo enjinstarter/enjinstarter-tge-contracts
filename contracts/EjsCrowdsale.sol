@@ -81,6 +81,19 @@ contract EjsCrowdsale is
         );
     }
 
+    /**
+     * @return remainingLots Remaining number of lots for crowdsale
+     */
+    function getRemainingLots()
+        external
+        view
+        override
+        returns (uint256 remainingLots)
+    {
+        uint256 remainingTokens = tokenCap().sub(tokensSold);
+        remainingLots = remainingTokens.div(lotSize());
+    }
+
     function pause() external override onlyBy(crowdsaleAdmin) {
         _pause();
     }

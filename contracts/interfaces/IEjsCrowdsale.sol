@@ -14,6 +14,8 @@ interface IEjsCrowdsale is ICrowdsale {
         view
         returns (uint256 availableLots);
 
+    function getRemainingLots() external view returns (uint256 remainingLots);
+
     function pause() external;
 
     function unpause() external;

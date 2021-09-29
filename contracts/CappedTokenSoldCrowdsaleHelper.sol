@@ -33,7 +33,7 @@ contract CappedTokenSoldCrowdsaleHelper {
     /**
      * @return tokenCap_ the token cap of the crowdsale.
      */
-    function tokenCap() external view returns (uint256 tokenCap_) {
+    function tokenCap() public view returns (uint256 tokenCap_) {
         tokenCap_ = _tokenCap;
     }
 
