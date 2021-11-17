@@ -18,57 +18,48 @@ async function main() {
   const network = hre.network.name;
   const accounts = await hre.ethers.getSigners();
 
-  const tokenName = "Enjinstarter";
-  const tokenSymbol = "EJS";
-  const tokenCap = hre.ethers.utils.parseEther("5000000000");
-
-  const genesisShardsTokenAmount = hre.ethers.utils.parseEther("6250000");
-
-  let genesisShardsWallet;
+  let whitelistAdmin;
   let isPublicNetwork = true;
 
   console.log(`Network: ${network}`);
 
-  if (network === "bsc-mainnet") {
-    genesisShardsWallet = process.env.BSC_MAINNET_GENESIS_SHARDS_WALLET;
-  } else if (network === "bsc-testnet") {
-    genesisShardsWallet = process.env.BSC_TESTNET_GENESIS_SHARDS_WALLET;
-  } else if (network === "mainnet") {
-    genesisShardsWallet = process.env.MAINNET_GENESIS_SHARDS_WALLET;
+  if (network === "mainnet") {
+    whitelistAdmin = process.env.MAINNET_FINA_WHITELIST_ADMIN;
   } else if (network === "ropsten") {
-    genesisShardsWallet = process.env.ROPSTEN_GENESIS_SHARDS_WALLET;
+    whitelistAdmin = process.env.ROPSTEN_FINA_WHITELIST_ADMIN;
   } else if (network === "kovan") {
   } else if (network === "localhost") {
     isPublicNetwork = false;
-    genesisShardsWallet = accounts[5].address;
+
+    whitelistAdmin = accounts[2].address;
   } else {
     throw new Error(`Unknown network: ${network}`);
   }
 
-  if (genesisShardsWallet === undefined) {
-    throw new Error("Unknown Genesis Shards wallet");
+  if (whitelistAdmin === undefined) {
+    throw new Error("Unknown whitelist admin");
   }
 
   // We get the contract to deploy
-  const EjsToken = await hre.ethers.getContractFactory("EjsToken");
+  const FinaWhitelist = await hre.ethers.getContractFactory("FinaWhitelist");
 
-  const ejsTokenArgs = [tokenName, tokenSymbol, tokenCap];
-  const ejsTokenContract = await deployHelper.deployContract(EjsToken, ejsTokenArgs, true);
+  const finaWhitelistArgs = [];
+  const finaWhitelistContract = await deployHelper.deployContract(FinaWhitelist, finaWhitelistArgs, true);
 
-  await deployHelper.contractDeployed(ejsTokenContract, isPublicNetwork);
+  await deployHelper.contractDeployed(finaWhitelistContract, isPublicNetwork);
 
-  console.log("EJS Token:", ejsTokenContract.address);
+  console.log("FinaWhitelist:", finaWhitelistContract.address);
 
   // Verify contract source code if deployed to public network
   if (isPublicNetwork) {
     console.log("Verify Contracts");
 
-    await deployHelper.tryVerifyContract(ejsTokenContract, ejsTokenArgs);
+    await deployHelper.tryVerifyContract(finaWhitelistContract, finaWhitelistArgs);
   }
 
   // Post Deployment Setup
   console.log("Post Deployment Setup");
-  await ejsTokenContract.mint(genesisShardsWallet, genesisShardsTokenAmount);
+  await finaWhitelistContract.setWhitelistAdmin(whitelistAdmin);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

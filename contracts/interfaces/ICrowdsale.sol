@@ -31,7 +31,10 @@ interface ICrowdsale {
 
     function rate(address paymentToken) external view returns (uint256 rate_);
 
-    function lotSize() external view returns (uint256 lotSize_);
+    function lotSize(address beneficiary)
+        external
+        view
+        returns (uint256 lotSize_);
 
     function maxLots() external view returns (uint256 maxLots_);
 
@@ -45,15 +48,16 @@ interface ICrowdsale {
         view
         returns (bool isPaymentToken_);
 
-    function getTokenAmount(uint256 lots)
+    function getTokenAmount(uint256 lots, address beneficiary)
         external
         view
         returns (uint256 tokenAmount);
 
-    function getWeiAmount(address paymentToken, uint256 lots)
-        external
-        view
-        returns (uint256 weiAmount);
+    function getWeiAmount(
+        address paymentToken,
+        uint256 lots,
+        address beneficiary
+    ) external view returns (uint256 weiAmount);
 
     function buyTokens(address paymentToken, uint256 lots) external;
 

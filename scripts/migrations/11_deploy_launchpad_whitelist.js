@@ -18,57 +18,60 @@ async function main() {
   const network = hre.network.name;
   const accounts = await hre.ethers.getSigners();
 
-  const tokenName = "Enjinstarter";
-  const tokenSymbol = "EJS";
-  const tokenCap = hre.ethers.utils.parseEther("5000000000");
-
-  const genesisShardsTokenAmount = hre.ethers.utils.parseEther("6250000");
-
-  let genesisShardsWallet;
+  let whitelistAdmin;
   let isPublicNetwork = true;
 
   console.log(`Network: ${network}`);
 
   if (network === "bsc-mainnet") {
-    genesisShardsWallet = process.env.BSC_MAINNET_GENESIS_SHARDS_WALLET;
+    whitelistAdmin = process.env.BSC_MAINNET_LAUNCHPAD_WHITELIST_ADMIN;
   } else if (network === "bsc-testnet") {
-    genesisShardsWallet = process.env.BSC_TESTNET_GENESIS_SHARDS_WALLET;
+    whitelistAdmin = process.env.BSC_TESTNET_LAUNCHPAD_WHITELIST_ADMIN;
   } else if (network === "mainnet") {
-    genesisShardsWallet = process.env.MAINNET_GENESIS_SHARDS_WALLET;
+    whitelistAdmin = process.env.MAINNET_LAUNCHPAD_WHITELIST_ADMIN;
   } else if (network === "ropsten") {
-    genesisShardsWallet = process.env.ROPSTEN_GENESIS_SHARDS_WALLET;
+    whitelistAdmin = process.env.ROPSTEN_LAUNCHPAD_WHITELIST_ADMIN;
   } else if (network === "kovan") {
+  } else if (network === "polygon-mainnet") {
+    whitelistAdmin = process.env.POLYGON_MAINNET_LAUNCHPAD_WHITELIST_ADMIN;
+  } else if (network === "polygon-mumbai") {
+    whitelistAdmin = process.env.POLYGON_MUMBAI_LAUNCHPAD_WHITELIST_ADMIN;
   } else if (network === "localhost") {
     isPublicNetwork = false;
-    genesisShardsWallet = accounts[5].address;
+
+    whitelistAdmin = accounts[2].address;
   } else {
     throw new Error(`Unknown network: ${network}`);
   }
 
-  if (genesisShardsWallet === undefined) {
-    throw new Error("Unknown Genesis Shards wallet");
+  if (whitelistAdmin === undefined) {
+    throw new Error("Unknown whitelist admin");
   }
 
   // We get the contract to deploy
-  const EjsToken = await hre.ethers.getContractFactory("EjsToken");
+  const LaunchpadWhitelist = await hre.ethers.getContractFactory("LaunchpadWhitelist");
 
-  const ejsTokenArgs = [tokenName, tokenSymbol, tokenCap];
-  const ejsTokenContract = await deployHelper.deployContract(EjsToken, ejsTokenArgs, true);
+  const launchpadWhitelistArgs = [];
+  const launchpadWhitelistContract = await deployHelper.deployContract(
+    LaunchpadWhitelist,
+    launchpadWhitelistArgs,
+    true
+  );
 
-  await deployHelper.contractDeployed(ejsTokenContract, isPublicNetwork);
+  await deployHelper.contractDeployed(launchpadWhitelistContract, isPublicNetwork);
 
-  console.log("EJS Token:", ejsTokenContract.address);
+  console.log("LaunchpadWhitelist:", launchpadWhitelistContract.address);
 
   // Verify contract source code if deployed to public network
   if (isPublicNetwork) {
     console.log("Verify Contracts");
 
-    await deployHelper.tryVerifyContract(ejsTokenContract, ejsTokenArgs);
+    await deployHelper.tryVerifyContract(launchpadWhitelistContract, launchpadWhitelistArgs);
   }
 
   // Post Deployment Setup
   console.log("Post Deployment Setup");
-  await ejsTokenContract.mint(genesisShardsWallet, genesisShardsTokenAmount);
+  await launchpadWhitelistContract.setWhitelistAdmin(whitelistAdmin);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

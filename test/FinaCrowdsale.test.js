@@ -5,36 +5,38 @@ const timeMachine = require("ganache-time-traveler");
 const { expectEvent, expectRevert, time } = require("@openzeppelin/test-helpers");
 const { BIGNUMBER_ZERO, BN, BN_ZERO, BN_ONE, ZERO_ADDRESS, ether, ...testHelpers } = require("./test-helpers");
 
-describe("EjsCrowdsale", () => {
+describe("FinaCrowdsale", () => {
+  const BN_TEN_POW_EIGHTEEN = new BN("10").pow(new BN("18"));
   const TOKEN_SELLING_SCALE = ether("1");
   const MAX_NUM_PAYMENT_TOKENS = 10;
   const LOT_SIZE = 25000;
-  const MAX_LOTS = 10;
+  const MAX_LOTS = 1;
+  const MIN_TOKEN_HOLD_AMOUNT = "1";
   const PUBLIC_TOKEN_AMOUNT = "18750000";
+  const DEAD_ADDRESS = "0x000000000000000000000000000000000000dEaD";
 
   const publicTokenAmount = ether(PUBLIC_TOKEN_AMOUNT);
   const crowdsalePaymentDecimal = BigNumber.from("6");
   const crowdsaleRate = hre.ethers.utils.parseEther("0.008");
   const crowdsaleLotSize = BigNumber.from(LOT_SIZE); // USD200 worth of tokens being sold
   const crowdsaleMaxLots = BigNumber.from(MAX_LOTS);
+  const defaultBuyWhitelistAmount = ether("244902.109484826044317000");
 
   let accounts;
   let defaultBuyAccount;
   let defaultCrowdsaleInfo;
   let defaultCrowdsaleClosingTime;
   let defaultCrowdsaleOpeningTime;
-  let defaultScheduleStartTimestamp;
   let defaultGovernanceAccount;
   let defaultCrowdsaleAdmin;
   let defaultPaymentTokensInfo;
   let defaultTimeframe;
   let defaultWallet;
-  let ejsCrowdsale;
+  let finaCrowdsale;
   let ejsToken;
   let snapshotId;
   let usdtMock;
-  let vesting;
-  let whitelist;
+  let finaWhitelist;
 
   before(async () => {
     const snapshot = await timeMachine.takeSnapshot();
@@ -57,27 +59,6 @@ describe("EjsCrowdsale", () => {
   beforeEach(async () => {
     ejsToken = await testHelpers.newEjsToken();
 
-    const cliffDurationDays = BN_ZERO;
-    const percentReleaseAtScheduleStart = ether("50");
-    const percentReleaseForEachInterval = ether("50");
-    const intervalDays = new BN("30");
-    const gapDays = new BN("0");
-    const numberOfIntervals = new BN("1");
-    const releaseMethod = new BN("0"); // IntervalEnd
-    const allowAccumulate = true;
-
-    vesting = await testHelpers.newVesting(
-      ejsToken.address,
-      cliffDurationDays,
-      percentReleaseAtScheduleStart,
-      percentReleaseForEachInterval,
-      intervalDays,
-      gapDays,
-      numberOfIntervals,
-      releaseMethod,
-      allowAccumulate
-    );
-
     usdcMock = await testHelpers.newUsdcMock(
       defaultGovernanceAccount,
       defaultGovernanceAccount,
@@ -86,11 +67,12 @@ describe("EjsCrowdsale", () => {
       defaultGovernanceAccount
     );
     usdtMock = await testHelpers.newUsdtMock();
-    whitelist = await testHelpers.newWhitelist();
+    finaWhitelist = await testHelpers.newFinaWhitelist();
     defaultCrowdsaleInfo = {
       tokenCap: hre.ethers.utils.parseEther(PUBLIC_TOKEN_AMOUNT),
-      vestingContract: vesting.address,
-      whitelistContract: whitelist.address,
+      whitelistContract: finaWhitelist.address,
+      tokenHold: ejsToken.address,
+      minTokenHoldAmount: hre.ethers.utils.parseEther(MIN_TOKEN_HOLD_AMOUNT),
     };
     const latestBlockTimestamp = await time.latest();
     defaultCrowdsaleOpeningTime = latestBlockTimestamp.add(time.duration.minutes(30));
@@ -99,7 +81,6 @@ describe("EjsCrowdsale", () => {
       openingTime: BigNumber.from(defaultCrowdsaleOpeningTime.toString(10)),
       closingTime: BigNumber.from(defaultCrowdsaleClosingTime.toString(10)),
     };
-    defaultScheduleStartTimestamp = defaultCrowdsaleClosingTime.add(time.duration.hours(1));
     defaultPaymentTokensInfo = [
       {
         paymentToken: usdcMock.address,
@@ -112,9 +93,8 @@ describe("EjsCrowdsale", () => {
         rate: crowdsaleRate,
       },
     ];
-    ejsCrowdsale = await testHelpers.newEjsCrowdsale(
+    finaCrowdsale = await testHelpers.newFinaCrowdsale(
       defaultWallet,
-      ejsToken.address,
       defaultCrowdsaleInfo,
       defaultTimeframe,
       defaultPaymentTokensInfo
@@ -129,30 +109,28 @@ describe("EjsCrowdsale", () => {
       throw new Error(`Failed to configure minter: account=${minterAccount}, amount=${minterAllowedAmount}`);
     }
 
-    await ejsToken.mint(vesting.address, publicTokenAmount, { from: defaultGovernanceAccount });
-    await ejsToken.setMinterAccount(ejsCrowdsale.address, { from: defaultGovernanceAccount });
-    await vesting.setVestingAdmin(ejsCrowdsale.address, { from: defaultGovernanceAccount });
-    await whitelist.addWhitelisted(defaultBuyAccount, { from: defaultGovernanceAccount });
-    await ejsCrowdsale.setCrowdsaleAdmin(defaultCrowdsaleAdmin, { from: defaultGovernanceAccount });
+    await finaWhitelist.addWhitelisted(defaultBuyAccount, defaultBuyWhitelistAmount, {
+      from: defaultGovernanceAccount,
+    });
+    await finaCrowdsale.setCrowdsaleAdmin(defaultCrowdsaleAdmin, { from: defaultGovernanceAccount });
   });
 
   it("should be initialized correctly", async () => {
-    const expectTokenSelling = ejsToken.address;
+    const expectTokenSelling = DEAD_ADDRESS;
     const expectWallet = defaultWallet;
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
     const expectRate = ether("0.008");
     const expectRates = [expectRate, expectRate];
-    const expectLotSize = new BN(crowdsaleLotSize.toString());
+    const expectLotSizeForDefaultBuyAccount = defaultBuyWhitelistAmount;
     const expectMaxLots = new BN(crowdsaleMaxLots.toString());
     const expectWeiRaised = [BN_ZERO, BN_ZERO];
     const expectTokensSold = BN_ZERO;
     const expectIsPaymentToken = [true, true];
     const expectTokenCap = ether(PUBLIC_TOKEN_AMOUNT);
     const expectTokenCapReached = false;
-    const expectBeneficiaryCapNumber = MAX_LOTS * LOT_SIZE;
-    const expectBeneficiaryCap = ether(expectBeneficiaryCapNumber.toString());
+    const expectBeneficiaryCapForDefaultBuyAccount = defaultBuyWhitelistAmount;
     const expectTokensPurchasedBy = BN_ZERO;
-    const expectRemainingLots = ether(PUBLIC_TOKEN_AMOUNT).div(new BN(LOT_SIZE));
+    const expectRemainingTokens = ether(PUBLIC_TOKEN_AMOUNT);
     const expectMaxLotsPerBeneficiary = new BN(MAX_LOTS);
     const expectAvailableLotsForWhitelistedBeneficiary = expectMaxLotsPerBeneficiary;
     const expectAvailableLotsForNonWhitelistedBeneficiary = BN_ZERO;
@@ -161,23 +139,27 @@ describe("EjsCrowdsale", () => {
     const expectClosingTime = defaultCrowdsaleClosingTime;
     const expectIsOpen = false;
     const expectHasClosed = false;
+    const expectTokenHoldContract = ejsToken.address;
+    const expectMinTokenHoldAmount = ether(MIN_TOKEN_HOLD_AMOUNT);
 
-    const tokenSelling = await ejsCrowdsale.tokenSelling();
-    const wallet = await ejsCrowdsale.wallet();
-    const paymentTokens = await ejsCrowdsale.paymentTokens();
-    const lotSize = await ejsCrowdsale.lotSize(ejsCrowdsale.address);
-    const maxLots = await ejsCrowdsale.maxLots();
-    const tokensSold = await ejsCrowdsale.tokensSold();
-    const tokenCap = await ejsCrowdsale.tokenCap();
-    const tokenCapReached = await ejsCrowdsale.tokenCapReached(expectTokensSold);
-    const beneficiaryCap = await ejsCrowdsale.getBeneficiaryCap();
-    const tokensPurchasedBy = await ejsCrowdsale.getTokensPurchasedBy(defaultGovernanceAccount);
-    const remainingLots = await ejsCrowdsale.getRemainingLots();
-    const paused = await ejsCrowdsale.paused();
-    const openingTime = await ejsCrowdsale.openingTime();
-    const closingTime = await ejsCrowdsale.closingTime();
-    const isOpen = await ejsCrowdsale.isOpen();
-    const hasClosed = await ejsCrowdsale.hasClosed();
+    const tokenSelling = await finaCrowdsale.tokenSelling();
+    const wallet = await finaCrowdsale.wallet();
+    const paymentTokens = await finaCrowdsale.paymentTokens();
+    const lotSizeForDefaultBuyAccount = await finaCrowdsale.lotSize(defaultBuyAccount);
+    const maxLots = await finaCrowdsale.maxLots();
+    const tokensSold = await finaCrowdsale.tokensSold();
+    const tokenCap = await finaCrowdsale.tokenCap();
+    const tokenCapReached = await finaCrowdsale.tokenCapReached(expectTokensSold);
+    const beneficiaryCapForDefaultBuyAccount = await finaCrowdsale.getBeneficiaryCap(defaultBuyAccount);
+    const tokensPurchasedBy = await finaCrowdsale.getTokensPurchasedBy(defaultGovernanceAccount);
+    const remainingTokens = await finaCrowdsale.getRemainingTokens();
+    const paused = await finaCrowdsale.paused();
+    const openingTime = await finaCrowdsale.openingTime();
+    const closingTime = await finaCrowdsale.closingTime();
+    const isOpen = await finaCrowdsale.isOpen();
+    const hasClosed = await finaCrowdsale.hasClosed();
+    const tokenHoldContract = await finaCrowdsale.tokenHoldContract();
+    const minTokenHoldAmount = await finaCrowdsale.minTokenHoldAmount();
 
     assert.strictEqual(
       tokenSelling,
@@ -185,7 +167,10 @@ describe("EjsCrowdsale", () => {
       `Token selling is ${tokenSelling} instead of ${expectTokenSelling}`
     );
     assert.strictEqual(wallet, expectWallet, `Wallet is ${wallet} instead of ${expectWallet}`);
-    assert.ok(lotSize.eq(expectLotSize), `Lot size is ${lotSize} instead of ${expectLotSize}`);
+    assert.ok(
+      lotSizeForDefaultBuyAccount.eq(expectLotSizeForDefaultBuyAccount),
+      `Lot size is ${lotSizeForDefaultBuyAccount} instead of ${expectLotSizeForDefaultBuyAccount}`
+    );
     assert.ok(maxLots.eq(expectMaxLots), `Max lots is ${maxLots} instead of ${expectMaxLots}`);
 
     assert.strictEqual(
@@ -209,8 +194,8 @@ describe("EjsCrowdsale", () => {
     );
 
     assert.ok(
-      beneficiaryCap.eq(expectBeneficiaryCap),
-      `Beneficiary cap is ${beneficiaryCap} instead of ${expectBeneficiaryCap}`
+      beneficiaryCapForDefaultBuyAccount.eq(expectBeneficiaryCapForDefaultBuyAccount),
+      `Beneficiary cap is ${beneficiaryCapForDefaultBuyAccount} instead of ${expectBeneficiaryCapForDefaultBuyAccount}`
     );
 
     assert.ok(
@@ -219,8 +204,8 @@ describe("EjsCrowdsale", () => {
     );
 
     assert.ok(
-      remainingLots.eq(expectRemainingLots),
-      `Remaining lots is ${remainingLots} instead of ${expectRemainingLots}`
+      remainingTokens.eq(expectRemainingTokens),
+      `Remaining tokens is ${remainingTokens} instead of ${expectRemainingTokens}`
     );
 
     assert.strictEqual(paused, expectPaused, `Paused is ${paused} instead of ${expectPaused}`);
@@ -230,12 +215,22 @@ describe("EjsCrowdsale", () => {
     assert.strictEqual(isOpen, expectIsOpen, `Is open is ${isOpen} instead of ${expectIsOpen}`);
     assert.strictEqual(hasClosed, expectHasClosed, `Has closed is ${hasClosed} instead of ${expectHasClosed}`);
 
+    assert.strictEqual(
+      tokenHoldContract,
+      expectTokenHoldContract,
+      `Token hold contract address is ${tokenHoldContract} instead of ${expectTokenHoldContract}`
+    );
+    assert.ok(
+      minTokenHoldAmount.eq(expectMinTokenHoldAmount),
+      `Minimum token hold amount is ${minTokenHoldAmount} instead of ${expectMinTokenHoldAmount}`
+    );
+
     for (let i = 0; i < expectPaymentTokens.length; i++) {
-      const rate = await ejsCrowdsale.rate(expectPaymentTokens[i]);
-      const weiRaisedFor = await ejsCrowdsale.weiRaisedFor(expectPaymentTokens[i]);
-      const isPaymentToken = await ejsCrowdsale.isPaymentToken(expectPaymentTokens[i]);
-      const availableLotsForWhitelistedBeneficiary = await ejsCrowdsale.getAvailableLotsFor(defaultBuyAccount);
-      const availableLotsForNonWhitelistedBeneficiary = await ejsCrowdsale.getAvailableLotsFor(
+      const rate = await finaCrowdsale.rate(expectPaymentTokens[i]);
+      const weiRaisedFor = await finaCrowdsale.weiRaisedFor(expectPaymentTokens[i]);
+      const isPaymentToken = await finaCrowdsale.isPaymentToken(expectPaymentTokens[i]);
+      const availableLotsForWhitelistedBeneficiary = await finaCrowdsale.getAvailableLotsFor(defaultBuyAccount);
+      const availableLotsForNonWhitelistedBeneficiary = await finaCrowdsale.getAvailableLotsFor(
         defaultGovernanceAccount
       );
 
@@ -265,12 +260,12 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should return correct token amount", async () => {
-    const lotSize = new BN(crowdsaleLotSize.toString());
+    const lotSize = defaultBuyWhitelistAmount;
 
     for (let i = 0; i < MAX_LOTS; i++) {
       const expectGetTokenAmount = calculateTokenAmount(lotSize, new BN(i + 1));
 
-      const getTokenAmount = await ejsCrowdsale.getTokenAmount(new BN(i + 1), defaultBuyAccount);
+      const getTokenAmount = await finaCrowdsale.getTokenAmount(new BN(i + 1), defaultBuyAccount);
 
       assert.ok(
         getTokenAmount.eq(expectGetTokenAmount),
@@ -280,7 +275,7 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should return correct wei amount", async () => {
-    const lotSize = new BN(crowdsaleLotSize.toString());
+    const lotSize = defaultBuyWhitelistAmount;
     const rate = new BN(crowdsaleRate.toString());
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
 
@@ -290,7 +285,7 @@ describe("EjsCrowdsale", () => {
 
         // console.log(`${i}, ${j}: lotSize=${lotSize}, rate=${rate}, expectGetWeiAmount=${expectGetWeiAmount}`);
 
-        const getWeiAmount = await ejsCrowdsale.getWeiAmount(expectPaymentTokens[i], j + 1, defaultBuyAccount);
+        const getWeiAmount = await finaCrowdsale.getWeiAmount(expectPaymentTokens[i], j + 1, defaultBuyAccount);
 
         assert.ok(
           getWeiAmount.eq(expectGetWeiAmount),
@@ -301,186 +296,170 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should buy correct token amount", async () => {
-    const BN_LOT_SIZE = new BN(LOT_SIZE);
-    const lotSize = new BN(crowdsaleLotSize.toString());
+    const lotSize = defaultBuyWhitelistAmount;
     const rate = new BN(crowdsaleRate.toString());
-    const expectSellAccount = await ejsCrowdsale.wallet();
+    const expectSellAccount = await finaCrowdsale.wallet();
 
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
     const expectPaymentDecimal = new BN(crowdsalePaymentDecimal.toString());
     const expectPaymentDecimals = [expectPaymentDecimal, expectPaymentDecimal];
     const expectTokenCapReached = false;
-    const expectGrantIsRevocable = false;
     const expectMaxLots = new BN(crowdsaleMaxLots.toString());
 
     // advance to opening time
     await time.increaseTo(defaultCrowdsaleOpeningTime.add(time.duration.seconds(1)));
 
-    const expectBuyerEjsBalanceAfterBuy = BN_ZERO;
-    const expectEjsTotalSupplyAfterBuy = publicTokenAmount;
+    const expectBuyerEjsBalanceAfterBuy = ether(MIN_TOKEN_HOLD_AMOUNT);
+    const expectBuyLots = new BN(MAX_LOTS);
+    const expectBuyTokenAmount = calculateTokenAmount(lotSize, expectBuyLots);
+    const expectBuyWeiAmount = calculateWeiAmount(lotSize, expectBuyLots, rate);
 
     let expectTokensSoldAfterBuy = new BN("0");
-    let expectRemainingLotsAfterBuy = publicTokenAmount.div(BN_LOT_SIZE);
+    let expectRemainingTokensAfterBuy = publicTokenAmount;
+    let expectEjsTotalSupplyAfterBuy = new BN("0");
 
     for (let i = 0; i < expectPaymentTokens.length; i++) {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       const scale = new BN("10").pow(new BN("18").sub(expectPaymentDecimals[i]));
 
-      const halfMaxLots = MAX_LOTS / 2;
-      for (let j = 0; j < halfMaxLots; j++) {
-        let expectBeneficiaryTotalLotsAfterBuy = new BN("0");
-        let expectTokensPurchasedByAfterBuy = new BN("0");
-        let expectGrantAmountAfterBuy = new BN("0");
+      let expectBeneficiaryTotalLotsAfterBuy = new BN("0");
+      let expectTokensPurchasedByAfterBuy = new BN("0");
+      let expectGrantAmountAfterBuy = new BN("0");
 
-        const expectBuyAccount = accounts[10 + i * halfMaxLots + j]; // assumes max 10 accounts
-        await addCapital(expectPaymentTokens[i], expectBuyAccount, ether("4000"), scale);
-        await whitelist.addWhitelisted(expectBuyAccount, { from: defaultGovernanceAccount });
+      const expectBuyAccount = accounts[10 + i];
+      expectEjsTotalSupplyAfterBuy = expectEjsTotalSupplyAfterBuy.add(ether(MIN_TOKEN_HOLD_AMOUNT));
+      await addEjsToken(expectBuyAccount, ether(MIN_TOKEN_HOLD_AMOUNT));
+      await addCapital(expectPaymentTokens[i], expectBuyAccount, expectBuyWeiAmount, scale);
+      await finaWhitelist.addWhitelisted(expectBuyAccount, defaultBuyWhitelistAmount, {
+        from: defaultGovernanceAccount,
+      });
 
-        for (let k = 0; k < 2; k++) {
-          const expectBuyLots = k == 0 ? new BN(j + 1) : new BN(MAX_LOTS - j - 1);
-          const expectBuyTokenAmount = calculateTokenAmount(lotSize, expectBuyLots);
-          const expectBuyWeiAmount = calculateWeiAmount(lotSize, expectBuyLots, rate);
+      expectBeneficiaryTotalLotsAfterBuy = expectBeneficiaryTotalLotsAfterBuy.add(expectBuyLots);
+      expectTokensPurchasedByAfterBuy = expectTokensPurchasedByAfterBuy.add(expectBuyTokenAmount);
+      expectTokensSoldAfterBuy = expectTokensSoldAfterBuy.add(expectBuyTokenAmount);
+      expectGrantAmountAfterBuy = expectGrantAmountAfterBuy.add(expectBuyTokenAmount);
+      expectRemainingTokensAfterBuy = expectRemainingTokensAfterBuy.sub(expectBuyTokenAmount);
+      const expectAvailableLotsForBeneficiaryAfterBuy = expectMaxLots.sub(expectBeneficiaryTotalLotsAfterBuy);
 
-          expectBeneficiaryTotalLotsAfterBuy = expectBeneficiaryTotalLotsAfterBuy.add(expectBuyLots);
-          expectTokensPurchasedByAfterBuy = expectTokensPurchasedByAfterBuy.add(expectBuyTokenAmount);
-          expectTokensSoldAfterBuy = expectTokensSoldAfterBuy.add(expectBuyTokenAmount);
-          expectGrantAmountAfterBuy = expectGrantAmountAfterBuy.add(expectBuyTokenAmount);
-          expectRemainingLotsAfterBuy = expectRemainingLotsAfterBuy
-            .mul(BN_LOT_SIZE)
-            .sub(expectBuyTokenAmount)
-            .div(BN_LOT_SIZE);
-          const expectAvailableLotsForBeneficiaryAfterBuy = expectMaxLots.sub(expectBeneficiaryTotalLotsAfterBuy);
+      // console.log(
+      //   `${i}, ${j}, ${k}: expectRemainingTokensAfterBuy=${expectRemainingTokensAfterBuy}, expectBuyTokenAmount=${expectBuyTokenAmount}`
+      // );
 
-          // console.log(
-          //   `${i}, ${j}, ${k}: expectRemainingLotsAfterBuy=${expectRemainingLotsAfterBuy}, expectBuyTokenAmount=${expectBuyTokenAmount}`
-          // );
+      // console.log(`${i}, ${j}, ${k}: expectTokenPurchasedByAfterBuy=${expectTokensPurchasedByAfterBuy}`);
+      // console.log(`${i}, ${j}, ${k}: expectTokensSoldAfterBuy=${expectTokensSoldAfterBuy}`);
+      // console.log(`${i}, ${j}, ${k}: expectGrantAmountAfterBuy=${expectGrantAmountAfterBuy}`);
 
-          // console.log(`${i}, ${j}, ${k}: expectTokenPurchasedByAfterBuy=${expectTokensPurchasedByAfterBuy}`);
-          // console.log(`${i}, ${j}, ${k}: expectTokensSoldAfterBuy=${expectTokensSoldAfterBuy}`);
-          // console.log(`${i}, ${j}, ${k}: expectGrantAmountAfterBuy=${expectGrantAmountAfterBuy}`);
+      const sellerUsdBalanceBeforeBuy = await approveCrowdsale(
+        expectPaymentTokens[i],
+        expectBuyAccount,
+        expectBuyWeiAmount,
+        scale,
+        expectSellAccount
+      );
 
-          const sellerUsdBalanceBeforeBuy = await approveCrowdsale(
-            expectPaymentTokens[i],
-            expectBuyAccount,
-            expectBuyWeiAmount,
-            scale,
-            expectSellAccount
-          );
+      // const ejsTokenBalanceOf = await ejsToken.balanceOf(expectBuyAccount);
+      // const tokenHoldContract = await finaCrowdsale.tokenHoldContract();
+      // const minTokenHoldAmount = await finaCrowdsale.minTokenHoldAmount();
+      // console.log(
+      //   `${i}: ejsTokenAddress=${ejsToken.address}, expectBuyAccount=${expectBuyAccount}, ejsTokenBalanceOf=${ejsTokenBalanceOf}, tokenHoldContract=${tokenHoldContract}, minTokenHoldAmount=${minTokenHoldAmount}}, expectBuyLots=${expectBuyLots}`
+      // );
 
-          const buyToken = await ejsCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
-            from: expectBuyAccount,
-          });
+      const buyToken = await finaCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
+        from: expectBuyAccount,
+      });
 
-          expectEvent(buyToken, "TokensPurchased", {
-            purchaser: expectBuyAccount,
-            beneficiary: expectBuyAccount,
-            paymentToken: expectPaymentTokens[i],
-            lots: expectBuyLots,
-            weiAmount: expectBuyWeiAmount,
-            tokenAmount: expectBuyTokenAmount,
-          });
+      expectEvent(buyToken, "TokensPurchased", {
+        purchaser: expectBuyAccount,
+        beneficiary: expectBuyAccount,
+        paymentToken: expectPaymentTokens[i],
+        lots: expectBuyLots,
+        weiAmount: expectBuyWeiAmount,
+        tokenAmount: expectBuyTokenAmount,
+      });
 
-          await expectEvent.inTransaction(buyToken.tx, vesting, "VestingGrantAdded", {
-            account: expectBuyAccount,
-            grantAmount: expectBuyTokenAmount,
-            isRevocable: expectGrantIsRevocable,
-          });
+      const tokenCapReached = await finaCrowdsale.tokenCapReached(expectTokensSoldAfterBuy);
+      const tokensPurchasedByAfterBuy = await finaCrowdsale.getTokensPurchasedBy(expectBuyAccount);
+      const tokensSoldAfterBuy = await finaCrowdsale.tokensSold();
+      const buyerEjsBalanceAfterBuy = await ejsToken.balanceOf(expectBuyAccount);
+      const ejsTotalSupplyAfterBuy = await ejsToken.totalSupply();
+      const maxLots = await finaCrowdsale.maxLots();
+      const availableLotsForBeneficiary = await finaCrowdsale.getAvailableLotsFor(expectBuyAccount);
+      const remainingTokensAfterBuy = await finaCrowdsale.getRemainingTokens();
 
-          const tokenCapReached = await ejsCrowdsale.tokenCapReached(expectTokensSoldAfterBuy);
-          const tokensPurchasedByAfterBuy = await ejsCrowdsale.getTokensPurchasedBy(expectBuyAccount);
-          const tokensSoldAfterBuy = await ejsCrowdsale.tokensSold();
-          const buyerEjsBalanceAfterBuy = await ejsToken.balanceOf(expectBuyAccount);
-          const ejsTotalSupplyAfterBuy = await ejsToken.totalSupply();
-          const vestingGrantAfterBuy = await vesting.vestingGrantFor(expectBuyAccount);
-          const maxLots = await ejsCrowdsale.maxLots();
-          const availableLotsForBeneficiary = await ejsCrowdsale.getAvailableLotsFor(expectBuyAccount);
-          const remainingLotsAfterBuy = await ejsCrowdsale.getRemainingLots();
+      assert.strictEqual(
+        tokenCapReached,
+        expectTokenCapReached,
+        `${i}: Token cap reached is ${tokenCapReached} instead of ${expectTokenCapReached}`
+      );
 
-          assert.strictEqual(
-            tokenCapReached,
-            expectTokenCapReached,
-            `${i}, ${j}, ${k}: Token cap reached is ${tokenCapReached} instead of ${expectTokenCapReached}`
-          );
+      assert.ok(
+        tokensPurchasedByAfterBuy.eq(expectTokensPurchasedByAfterBuy),
+        `${i}: Tokens purchased by beneficiary after buy ${expectBuyLots} lots for ${expectBuyWeiAmount} is ${tokensPurchasedByAfterBuy} instead of ${expectTokensPurchasedByAfterBuy}`
+      );
 
-          assert.ok(
-            tokensPurchasedByAfterBuy.eq(expectTokensPurchasedByAfterBuy),
-            `${i}, ${j}, ${k}: Tokens purchased by beneficiary after buy ${expectBuyLots} lots for ${expectBuyWeiAmount} is ${tokensPurchasedByAfterBuy} instead of ${expectTokensPurchasedByAfterBuy}`
-          );
+      assert.ok(
+        tokensSoldAfterBuy.eq(expectTokensSoldAfterBuy),
+        `${i}: Tokens sold after buy ${expectBuyLots} tokens for ${expectBuyWeiAmount} is ${tokensSoldAfterBuy} instead of ${expectTokensSoldAfterBuy}`
+      );
 
-          assert.ok(
-            tokensSoldAfterBuy.eq(expectTokensSoldAfterBuy),
-            `${i}, ${j}, ${k}: Tokens sold after buy ${expectBuyLots} tokens for ${expectBuyWeiAmount} is ${tokensSoldAfterBuy} instead of ${expectTokensSoldAfterBuy}`
-          );
+      assert.ok(
+        buyerEjsBalanceAfterBuy.eq(expectBuyerEjsBalanceAfterBuy),
+        `${i}: Buyer EJS balance after buy ${expectBuyLots} lot(s) for ${expectBuyWeiAmount} is ${buyerEjsBalanceAfterBuy} instead of ${expectBuyerEjsBalanceAfterBuy}`
+      );
 
-          assert.ok(
-            buyerEjsBalanceAfterBuy.eq(expectBuyerEjsBalanceAfterBuy),
-            `${i}, ${j}, ${k}: Buyer EJS balance after buy ${expectBuyLots} tokens for ${expectBuyWeiAmount} is ${buyerEjsBalanceAfterBuy} instead of ${expectBuyerEjsBalanceAfterBuy}`
-          );
+      assert.ok(
+        ejsTotalSupplyAfterBuy.eq(expectEjsTotalSupplyAfterBuy),
+        `${i}: Total supply after buy ${expectBuyLots} lot(s) for ${expectBuyWeiAmount} is ${ejsTotalSupplyAfterBuy} instead of ${expectEjsTotalSupplyAfterBuy}`
+      );
 
-          assert.ok(
-            ejsTotalSupplyAfterBuy.eq(expectEjsTotalSupplyAfterBuy),
-            `${i}, ${j}, ${k}: Total supply after buy ${expectBuyLots} tokens for ${expectBuyWeiAmount} is ${ejsTotalSupplyAfterBuy} instead of ${expectEjsTotalSupplyAfterBuy}`
-          );
+      assert.ok(maxLots.eq(expectMaxLots), `${i}: Max lots per beneficiary is ${maxLots} instead of ${expectMaxLots}`);
 
-          assert.ok(
-            vestingGrantAfterBuy[0].eq(expectGrantAmountAfterBuy),
-            `${i}, ${j}, ${k}: Grant amount after buy ${expectBuyLots} tokens for ${expectBuyWeiAmount} is ${vestingGrantAfterBuy[0]} instead of ${expectGrantAmountAfterBuy}`
-          );
+      assert.ok(
+        availableLotsForBeneficiary.eq(expectAvailableLotsForBeneficiaryAfterBuy),
+        `${i}: Available lots for beneficiary is ${availableLotsForBeneficiary} instead of ${expectAvailableLotsForBeneficiaryAfterBuy}`
+      );
 
-          assert.ok(
-            maxLots.eq(expectMaxLots),
-            `${i}, ${j}, ${k}: Max lots per beneficiary is ${maxLots} instead of ${expectMaxLots}`
-          );
+      assert.ok(
+        remainingTokensAfterBuy.eq(expectRemainingTokensAfterBuy),
+        `${i}: Remaining tokens is ${remainingTokensAfterBuy} instead of ${expectRemainingTokensAfterBuy}`
+      );
 
-          assert.ok(
-            availableLotsForBeneficiary.eq(expectAvailableLotsForBeneficiaryAfterBuy),
-            `${i}, ${j}, ${k}: Available lots for beneficiary is ${availableLotsForBeneficiary} instead of ${expectAvailableLotsForBeneficiaryAfterBuy}`
-          );
+      const expectSellerUsdBalanceAfterBuy = sellerUsdBalanceBeforeBuy.add(expectBuyWeiAmount.div(scale));
+
+      switch (expectPaymentTokens[i]) {
+        case usdcMock.address:
+          const sellerUsdcBalanceAfterBuy = await usdcMock.balanceOf(expectSellAccount);
 
           assert.ok(
-            remainingLotsAfterBuy.eq(expectRemainingLotsAfterBuy),
-            `${i}, ${j}, ${k}: Remaining lots is ${remainingLotsAfterBuy} instead of ${expectRemainingLotsAfterBuy}`
+            sellerUsdcBalanceAfterBuy.eq(expectSellerUsdBalanceAfterBuy),
+            `${i}: Seller USDC balance after buy tokens for ${expectBuyWeiAmount} is ${sellerUsdcBalanceAfterBuy} instead of ${expectSellerUsdBalanceAfterBuy}`
           );
 
-          const expectSellerUsdBalanceAfterBuy = sellerUsdBalanceBeforeBuy.add(expectBuyWeiAmount.div(scale));
+          break;
+        case usdtMock.address:
+          const sellerUsdtBalanceAfterBuy = await usdtMock.balanceOf(expectSellAccount);
 
-          switch (expectPaymentTokens[i]) {
-            case usdcMock.address:
-              const sellerUsdcBalanceAfterBuy = await usdcMock.balanceOf(expectSellAccount);
+          assert.ok(
+            sellerUsdtBalanceAfterBuy.eq(expectSellerUsdBalanceAfterBuy),
+            `${i}: Seller USDT balance after buy tokens for ${expectBuyWeiAmount} is ${sellerUsdtBalanceAfterBuy} instead of ${expectSellerUsdBalanceAfterBuy}`
+          );
 
-              assert.ok(
-                sellerUsdcBalanceAfterBuy.eq(expectSellerUsdBalanceAfterBuy),
-                `${i}, ${j}, ${k}: Seller USDC balance after buy tokens for ${expectBuyWeiAmount} is ${sellerUsdcBalanceAfterBuy} instead of ${expectSellerUsdBalanceAfterBuy}`
-              );
-
-              break;
-            case usdtMock.address:
-              const sellerUsdtBalanceAfterBuy = await usdtMock.balanceOf(expectSellAccount);
-
-              assert.ok(
-                sellerUsdtBalanceAfterBuy.eq(expectSellerUsdBalanceAfterBuy),
-                `${i}, ${j}, ${k}: Seller USDT balance after buy tokens for ${expectBuyWeiAmount} is ${sellerUsdtBalanceAfterBuy} instead of ${expectSellerUsdBalanceAfterBuy}`
-              );
-
-              break;
-            default:
-              throw new Error(`${i}, ${j}, ${k}: Unknown payment token after buy: ${expectPaymentTokens[i]}`);
-          }
-        }
+          break;
+        default:
+          throw new Error(`${i}: Unknown payment token after buy: ${expectPaymentTokens[i]}`);
       }
     }
   });
 
   it("should not allow to exceed beneficiary cap for buy tokens", async () => {
-    const lotSize = new BN(crowdsaleLotSize.toString());
+    const lotSize = defaultBuyWhitelistAmount;
     const rate = new BN(crowdsaleRate.toString());
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
     const expectPaymentDecimal = new BN(crowdsalePaymentDecimal.toString());
     const expectPaymentDecimals = [expectPaymentDecimal, expectPaymentDecimal];
-    const expectSellAccount = await ejsCrowdsale.wallet();
-    const notWhitelistedBuyAccount = accounts[6];
-    const expectGrantIsRevocable = false;
+    const expectSellAccount = await finaCrowdsale.wallet();
+    const notWhitelistedBuyAccount = accounts[8];
 
     // advance to opening time
     await time.increaseTo(defaultCrowdsaleOpeningTime.add(time.duration.seconds(1)));
@@ -488,19 +467,23 @@ describe("EjsCrowdsale", () => {
     for (let i = 0; i < expectPaymentTokens.length; i++) {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
+      const expectBuyLots = new BN(MAX_LOTS);
       const expectBuyAccount = accounts[10 + i]; // assumes max 10 accounts
       const scale = new BN("10").pow(new BN("18").sub(expectPaymentDecimals[i]));
-      await whitelist.addWhitelisted(expectBuyAccount, { from: defaultGovernanceAccount });
-      await addCapital(expectPaymentTokens[i], expectBuyAccount, ether("3000"), scale);
+      await finaWhitelist.addWhitelisted(expectBuyAccount, defaultBuyWhitelistAmount, {
+        from: defaultGovernanceAccount,
+      });
 
-      for (let j = 0; j < MAX_LOTS; j++) {
-        const expectBuyLots = new BN(j + 1);
-        const expectBuyTokenAmount = calculateTokenAmount(lotSize, expectBuyLots);
-        const expectBuyWeiAmount = calculateWeiAmount(lotSize, expectBuyLots, rate);
+      const expectBuyTokenAmount = calculateTokenAmount(lotSize, expectBuyLots);
+      const expectBuyWeiAmount = calculateWeiAmount(lotSize, expectBuyLots, rate);
 
+      await addEjsToken(expectBuyAccount, ether(MIN_TOKEN_HOLD_AMOUNT));
+      await addCapital(expectPaymentTokens[i], expectBuyAccount, expectBuyWeiAmount, scale);
+
+      for (let j = 0; j < MAX_LOTS + 1; j++) {
         // console.log(`${i}, ${j}: expectBuyLots=${expectBuyLots}, expectBuyWeiAmount=${expectBuyWeiAmount}`);
 
-        if (j < 4) {
+        if (j < MAX_LOTS) {
           const sellerUsdBalanceBeforeBuy = await approveCrowdsale(
             expectPaymentTokens[i],
             expectBuyAccount,
@@ -509,7 +492,7 @@ describe("EjsCrowdsale", () => {
             expectSellAccount
           );
 
-          const buyToken = await ejsCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
+          const buyToken = await finaCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
             from: expectBuyAccount,
           });
 
@@ -521,31 +504,29 @@ describe("EjsCrowdsale", () => {
             weiAmount: expectBuyWeiAmount,
             tokenAmount: expectBuyTokenAmount,
           });
-
-          await expectEvent.inTransaction(buyToken.tx, vesting, "VestingGrantAdded", {
-            account: expectBuyAccount,
-            grantAmount: expectBuyTokenAmount,
-            isRevocable: expectGrantIsRevocable,
-          });
         } else {
-          const getTokensPurchasedBy = await ejsCrowdsale.getTokensPurchasedBy(expectBuyAccount);
-          const getWeiAmount = await ejsCrowdsale.getWeiAmount(expectPaymentTokens[i], expectBuyLots, expectBuyAccount);
+          const getTokensPurchasedBy = await finaCrowdsale.getTokensPurchasedBy(expectBuyAccount);
+          const getWeiAmount = await finaCrowdsale.getWeiAmount(
+            expectPaymentTokens[i],
+            expectBuyLots,
+            expectBuyAccount
+          );
           // console.log(
           //   `${i}, ${j}: getTokensPurchasedBy=${getTokensPurchasedBy}, expectBuyLots=${expectBuyLots}, getWeiAmount=${getWeiAmount}`
           // );
 
           await expectRevert(
-            ejsCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
+            finaCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
               from: expectBuyAccount,
             }),
-            "IndividuallyCappedCrowdsaleHelper: beneficiary cap exceeded"
+            "FinaCrowdsale: beneficiary cap exceeded"
           );
 
           await expectRevert(
-            ejsCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], expectBuyLots, {
+            finaCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], expectBuyLots, {
               from: notWhitelistedBuyAccount,
             }),
-            "IndividuallyCappedCrowdsaleHelper: beneficiary cap exceeded"
+            "FinaCrowdsale: beneficiary cap exceeded"
           );
         }
       }
@@ -553,13 +534,30 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should not allow to exceed token cap for buy tokens", async () => {
-    const maxNumBuysAtMaxLots = [37, 38]; // PUBLIC_TOKEN_AMOUNT / (MAX_LOTS * LOT_SIZE)
-    const lotSize = new BN(crowdsaleLotSize.toString());
-    const rate = new BN(crowdsaleRate.toString());
-    const notWhitelistedBuyAccount = accounts[6];
-    const exceedBuyAccount = accounts[7];
-    const expectSellAccount = await ejsCrowdsale.wallet();
+    const lotSize = defaultBuyWhitelistAmount;
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
+    const maxNumBuysAtMaxLotForAllPaymentTokens = publicTokenAmount
+      .mul(BN_TEN_POW_EIGHTEEN)
+      .div(new BN(MAX_LOTS).mul(lotSize));
+    const maxNumBuysAtMaxLotForEachPaymentToken = maxNumBuysAtMaxLotForAllPaymentTokens
+      .div(new BN(expectPaymentTokens.length))
+      .div(BN_TEN_POW_EIGHTEEN);
+    const maxNumBuysAtMaxLotForEachPaymentTokenInt = parseInt(maxNumBuysAtMaxLotForEachPaymentToken.toString(10), 10);
+    const maxNumBuysAtMaxLotForAllPaymentTokensInt = parseInt(
+      maxNumBuysAtMaxLotForAllPaymentTokens.div(BN_TEN_POW_EIGHTEEN).toString(10),
+      10
+    );
+    const maxNumBuysAtMaxLots = [
+      maxNumBuysAtMaxLotForEachPaymentTokenInt,
+      maxNumBuysAtMaxLotForAllPaymentTokensInt - maxNumBuysAtMaxLotForEachPaymentTokenInt,
+    ]; // assumes only 2 payment tokens
+    // console.log(
+    //   `maxNumBuysAtMaxLots[0]=${maxNumBuysAtMaxLots[0]}, maxNumBuysAtMaxLots[1]=${maxNumBuysAtMaxLots[1]}, PUBLIC_TOKEN_AMOUNT=${PUBLIC_TOKEN_AMOUNT}, MAX_LOTS=${MAX_LOTS}, lotSize=${lotSize}`
+    // );
+    const rate = new BN(crowdsaleRate.toString());
+    const notWhitelistedBuyAccount = accounts[8];
+    const exceedBuyAccount = accounts[7];
+    const expectSellAccount = await finaCrowdsale.wallet();
     const expectPaymentDecimal = new BN(crowdsalePaymentDecimal.toString());
     const expectPaymentDecimals = [expectPaymentDecimal, expectPaymentDecimal];
 
@@ -574,9 +572,19 @@ describe("EjsCrowdsale", () => {
       const expectBuyWeiAmount = calculateWeiAmount(lotSize, expectBuyLots, rate);
       const totalMaxNumBuysAtMaxLots = Math.max(...maxNumBuysAtMaxLots);
 
+      // console.log(
+      //   `${i}: expectBuyWeiAmount=${expectBuyWeiAmount}, lotSize=${lotSize}, expectBuyLots=${expectBuyLots}, rate=${rate}, totalMaxNumBuysAtMaxLots=${totalMaxNumBuysAtMaxLots}`
+      // );
+
       for (let j = 0; j < maxNumBuysAtMaxLots[i]; j++) {
         const expectBuyAccount = accounts[10 + i * totalMaxNumBuysAtMaxLots + j];
-        await whitelist.addWhitelisted(expectBuyAccount, { from: defaultGovernanceAccount });
+        await finaWhitelist.addWhitelisted(expectBuyAccount, defaultBuyWhitelistAmount, {
+          from: defaultGovernanceAccount,
+        });
+        await addEjsToken(expectBuyAccount, ether(MIN_TOKEN_HOLD_AMOUNT));
+        // console.log(
+        //   `${i}, ${j}: expectBuyAccount=${expectBuyAccount}, defaultBuyWhitelistAmount=${defaultBuyWhitelistAmount}`
+        // );
         await addCapital(expectPaymentTokens[i], expectBuyAccount, expectBuyWeiAmount, scale);
         const sellerUsdBalanceBeforeBuy = await approveCrowdsale(
           expectPaymentTokens[i],
@@ -586,18 +594,18 @@ describe("EjsCrowdsale", () => {
           expectSellAccount
         );
 
-        const buyToken = await ejsCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
+        const buyToken = await finaCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
           from: expectBuyAccount,
         });
       }
     }
 
-    const tokensSold = await ejsCrowdsale.tokensSold();
+    const tokensSold = await finaCrowdsale.tokensSold();
     // console.log(`tokensSold=${tokensSold}`);
 
     const expectBuyOneLot = BN_ONE;
     const expectOneLotWeiAmount = calculateWeiAmount(lotSize, expectBuyOneLot, rate);
-    await whitelist.addWhitelisted(exceedBuyAccount, { from: defaultGovernanceAccount });
+    await finaWhitelist.addWhitelisted(exceedBuyAccount, defaultBuyWhitelistAmount, { from: defaultGovernanceAccount });
 
     for (let i = 0; i < expectPaymentTokens.length; i++) {
       const scale = new BN("10").pow(new BN("18").sub(expectPaymentDecimals[i]));
@@ -611,14 +619,14 @@ describe("EjsCrowdsale", () => {
       );
 
       await expectRevert(
-        ejsCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyOneLot, {
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyOneLot, {
           from: exceedBuyAccount,
         }),
         "CappedTokenSoldHelper: cap exceeded"
       );
 
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(exceedBuyAccount, expectPaymentTokens[i], expectBuyOneLot, {
+        finaCrowdsale.buyTokensFor(exceedBuyAccount, expectPaymentTokens[i], expectBuyOneLot, {
           from: notWhitelistedBuyAccount,
         }),
         "CappedTokenSoldHelper: cap exceeded"
@@ -628,27 +636,8 @@ describe("EjsCrowdsale", () => {
 
   it("should not allow zero wallet address", async () => {
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        ZERO_ADDRESS,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        defaultPaymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(ZERO_ADDRESS, defaultCrowdsaleInfo, defaultTimeframe, defaultPaymentTokensInfo),
       "Crowdsale: zero wallet address"
-    );
-  });
-
-  it("should not allow zero token selling address", async () => {
-    await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ZERO_ADDRESS,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        defaultPaymentTokensInfo
-      ),
-      "Crowdsale: zero token selling address"
     );
   });
 
@@ -656,13 +645,7 @@ describe("EjsCrowdsale", () => {
     const paymentTokensInfo = [];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        paymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, defaultTimeframe, paymentTokensInfo),
       "Crowdsale: zero payment tokens"
     );
   });
@@ -683,13 +666,7 @@ describe("EjsCrowdsale", () => {
     }
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        paymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, defaultTimeframe, paymentTokensInfo),
       "Crowdsale: exceed max payment tokens"
     );
   });
@@ -711,13 +688,7 @@ describe("EjsCrowdsale", () => {
     ];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        paymentTokensInfoFirstExceed
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, defaultTimeframe, paymentTokensInfoFirstExceed),
       "Crowdsale: decimals exceed 18"
     );
 
@@ -735,13 +706,7 @@ describe("EjsCrowdsale", () => {
     ];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        paymentTokensInfoLastExceed
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, defaultTimeframe, paymentTokensInfoLastExceed),
       "Crowdsale: decimals exceed 18"
     );
   });
@@ -761,13 +726,7 @@ describe("EjsCrowdsale", () => {
     ];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        paymentTokensInfoFirstZero
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, defaultTimeframe, paymentTokensInfoFirstZero),
       "Crowdsale: zero payment token address"
     );
 
@@ -785,13 +744,7 @@ describe("EjsCrowdsale", () => {
     ];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        defaultTimeframe,
-        paymentTokensInfoLastZero
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, defaultTimeframe, paymentTokensInfoLastZero),
       "Crowdsale: zero payment token address"
     );
   });
@@ -811,9 +764,8 @@ describe("EjsCrowdsale", () => {
     ];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
+      testHelpers.newFinaCrowdsale(
         defaultWallet,
-        ejsToken.address,
         defaultCrowdsaleInfo,
         defaultTimeframe,
         paymentTokensInfoFirstZeroRate
@@ -835,9 +787,8 @@ describe("EjsCrowdsale", () => {
     ];
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
+      testHelpers.newFinaCrowdsale(
         defaultWallet,
-        ejsToken.address,
         defaultCrowdsaleInfo,
         defaultTimeframe,
         paymentTokensInfoLastZeroRate
@@ -849,18 +800,13 @@ describe("EjsCrowdsale", () => {
   it("should not allow zero token cap", async () => {
     const crowdsaleInfo = {
       tokenCap: BIGNUMBER_ZERO,
-      vestingContract: vesting.address,
-      whitelistContract: whitelist.address,
+      whitelistContract: finaWhitelist.address,
+      tokenHold: ejsToken.address,
+      minTokenHoldAmount: hre.ethers.utils.parseEther(MIN_TOKEN_HOLD_AMOUNT),
     };
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        crowdsaleInfo,
-        defaultTimeframe,
-        defaultPaymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, crowdsaleInfo, defaultTimeframe, defaultPaymentTokensInfo),
       "CappedTokenSoldHelper: zero cap"
     );
   });
@@ -872,9 +818,8 @@ describe("EjsCrowdsale", () => {
     };
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
+      testHelpers.newFinaCrowdsale(
         defaultWallet,
-        ejsToken.address,
         defaultCrowdsaleInfo,
         defaultTimeframe,
         defaultPaymentTokensInfo,
@@ -891,9 +836,8 @@ describe("EjsCrowdsale", () => {
     };
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
+      testHelpers.newFinaCrowdsale(
         defaultWallet,
-        ejsToken.address,
         defaultCrowdsaleInfo,
         defaultTimeframe,
         defaultPaymentTokensInfo,
@@ -913,13 +857,7 @@ describe("EjsCrowdsale", () => {
     };
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        timeframe,
-        defaultPaymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, timeframe, defaultPaymentTokensInfo),
       "TimedCrowdsaleHelper: opening time is before current time"
     );
   });
@@ -934,52 +872,50 @@ describe("EjsCrowdsale", () => {
     };
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        defaultCrowdsaleInfo,
-        timeframe,
-        defaultPaymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, defaultCrowdsaleInfo, timeframe, defaultPaymentTokensInfo),
       "TimedCrowdsaleHelper: closing time is before opening time"
-    );
-  });
-
-  it("should not allow zero vesting contract address", async () => {
-    const crowdsaleInfo = {
-      tokenCap: hre.ethers.utils.parseEther(PUBLIC_TOKEN_AMOUNT),
-      vestingContract: ZERO_ADDRESS,
-      whitelistContract: whitelist.address,
-    };
-
-    await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        crowdsaleInfo,
-        defaultTimeframe,
-        defaultPaymentTokensInfo
-      ),
-      "VestedCrowdsale: zero vesting address"
     );
   });
 
   it("should not allow zero whitelist contract address", async () => {
     const crowdsaleInfo = {
       tokenCap: hre.ethers.utils.parseEther(PUBLIC_TOKEN_AMOUNT),
-      vestingContract: vesting.address,
       whitelistContract: ZERO_ADDRESS,
+      tokenHold: ejsToken.address,
+      minTokenHoldAmount: hre.ethers.utils.parseEther(MIN_TOKEN_HOLD_AMOUNT),
     };
 
     await expectRevert(
-      testHelpers.newEjsCrowdsale(
-        defaultWallet,
-        ejsToken.address,
-        crowdsaleInfo,
-        defaultTimeframe,
-        defaultPaymentTokensInfo
-      ),
+      testHelpers.newFinaCrowdsale(defaultWallet, crowdsaleInfo, defaultTimeframe, defaultPaymentTokensInfo),
       "WhitelistCrowdsaleHelper: zero whitelist address"
+    );
+  });
+
+  it("should not allow zero token hold contract address", async () => {
+    const crowdsaleInfo = {
+      tokenCap: hre.ethers.utils.parseEther(PUBLIC_TOKEN_AMOUNT),
+      whitelistContract: finaWhitelist.address,
+      tokenHold: ZERO_ADDRESS,
+      minTokenHoldAmount: hre.ethers.utils.parseEther(MIN_TOKEN_HOLD_AMOUNT),
+    };
+
+    await expectRevert(
+      testHelpers.newFinaCrowdsale(defaultWallet, crowdsaleInfo, defaultTimeframe, defaultPaymentTokensInfo),
+      "HoldErc20TokenCrowdsaleHelper: zero token hold address"
+    );
+  });
+
+  it("should not allow zero min token amount", async () => {
+    const crowdsaleInfo = {
+      tokenCap: hre.ethers.utils.parseEther(PUBLIC_TOKEN_AMOUNT),
+      whitelistContract: finaWhitelist.address,
+      tokenHold: ejsToken.address,
+      minTokenHoldAmount: hre.ethers.utils.parseEther("0"),
+    };
+
+    await expectRevert(
+      testHelpers.newFinaCrowdsale(defaultWallet, crowdsaleInfo, defaultTimeframe, defaultPaymentTokensInfo),
+      "HoldErc20TokenCrowdsaleHelper: zero min token hold amount"
     );
   });
 
@@ -991,43 +927,43 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should not allow to get rate for zero payment token address", async () => {
-    await expectRevert(ejsCrowdsale.rate(ZERO_ADDRESS), "Crowdsale: zero payment token address");
+    await expectRevert(finaCrowdsale.rate(ZERO_ADDRESS), "Crowdsale: zero payment token address");
   });
 
   it("should not allow to get rate for unaccepted payment token address", async () => {
-    await expectRevert(ejsCrowdsale.rate(ejsToken.address), "Crowdsale: payment token unaccepted");
+    await expectRevert(finaCrowdsale.rate(ejsToken.address), "Crowdsale: payment token unaccepted");
   });
 
   it("should not allow to get wei raised for zero payment token address", async () => {
-    await expectRevert(ejsCrowdsale.weiRaisedFor(ZERO_ADDRESS), "Crowdsale: zero payment token address");
+    await expectRevert(finaCrowdsale.weiRaisedFor(ZERO_ADDRESS), "Crowdsale: zero payment token address");
   });
 
   it("should not allow to get wei raised for unaccepted payment token address", async () => {
-    await expectRevert(ejsCrowdsale.weiRaisedFor(ejsToken.address), "Crowdsale: payment token unaccepted");
+    await expectRevert(finaCrowdsale.weiRaisedFor(ejsToken.address), "Crowdsale: payment token unaccepted");
   });
 
   it("should not allow to check is payment token for zero payment token address", async () => {
-    await expectRevert(ejsCrowdsale.isPaymentToken(ZERO_ADDRESS), "Crowdsale: zero payment token address");
+    await expectRevert(finaCrowdsale.isPaymentToken(ZERO_ADDRESS), "Crowdsale: zero payment token address");
   });
 
   it("should not allow to get token amount for zero lots", async () => {
-    await expectRevert(ejsCrowdsale.getTokenAmount(BN_ZERO, defaultBuyAccount), "Crowdsale: zero lots");
+    await expectRevert(finaCrowdsale.getTokenAmount(BN_ZERO, defaultBuyAccount), "Crowdsale: zero lots");
   });
 
   it("should not allow to get token amount for zero beneficiary address", async () => {
-    await expectRevert(ejsCrowdsale.getTokenAmount(BN_ONE, ZERO_ADDRESS), "Crowdsale: zero beneficiary address");
+    await expectRevert(finaCrowdsale.getTokenAmount(BN_ONE, ZERO_ADDRESS), "Crowdsale: zero beneficiary address");
   });
 
   it("should not allow to get wei amount for zero payment token address", async () => {
     await expectRevert(
-      ejsCrowdsale.getWeiAmount(ZERO_ADDRESS, BN_ZERO, defaultBuyAccount),
+      finaCrowdsale.getWeiAmount(ZERO_ADDRESS, BN_ZERO, defaultBuyAccount),
       "Crowdsale: zero payment token address"
     );
   });
 
   it("should not allow to get wei amount for unaccepted payment token address", async () => {
     await expectRevert(
-      ejsCrowdsale.getWeiAmount(ejsToken.address, BN_ONE, defaultBuyAccount),
+      finaCrowdsale.getWeiAmount(ejsToken.address, BN_ONE, defaultBuyAccount),
       "Crowdsale: payment token unaccepted"
     );
   });
@@ -1039,21 +975,21 @@ describe("EjsCrowdsale", () => {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       await expectRevert(
-        ejsCrowdsale.getWeiAmount(expectPaymentTokens[i], BN_ZERO, defaultBuyAccount),
+        finaCrowdsale.getWeiAmount(expectPaymentTokens[i], BN_ZERO, defaultBuyAccount),
         "Crowdsale: zero lots"
       );
     }
   });
 
   it("should not allow to buy for zero beneficiary address", async () => {
-    const notWhitelistedBuyAccount = accounts[6];
+    const notWhitelistedBuyAccount = accounts[8];
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
 
     for (let i = 0; i < expectPaymentTokens.length; i++) {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(ZERO_ADDRESS, expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokensFor(ZERO_ADDRESS, expectPaymentTokens[i], BN_ONE, {
           from: notWhitelistedBuyAccount,
         }),
         "Crowdsale: zero beneficiary address"
@@ -1062,17 +998,17 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should not allow to buy for zero payment token address", async () => {
-    const notWhitelistedBuyAccount = accounts[6];
+    const notWhitelistedBuyAccount = accounts[8];
 
     await expectRevert(
-      ejsCrowdsale.buyTokens(ZERO_ADDRESS, BN_ONE, {
+      finaCrowdsale.buyTokens(ZERO_ADDRESS, BN_ONE, {
         from: defaultBuyAccount,
       }),
       "Crowdsale: zero payment token address"
     );
 
     await expectRevert(
-      ejsCrowdsale.buyTokensFor(defaultBuyAccount, ZERO_ADDRESS, BN_ONE, {
+      finaCrowdsale.buyTokensFor(defaultBuyAccount, ZERO_ADDRESS, BN_ONE, {
         from: notWhitelistedBuyAccount,
       }),
       "Crowdsale: zero payment token address"
@@ -1080,17 +1016,17 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should not allow to buy for unaccepted payment token address", async () => {
-    const notWhitelistedBuyAccount = accounts[6];
+    const notWhitelistedBuyAccount = accounts[8];
 
     await expectRevert(
-      ejsCrowdsale.buyTokens(ejsToken.address, BN_ONE, {
+      finaCrowdsale.buyTokens(ejsToken.address, BN_ONE, {
         from: defaultBuyAccount,
       }),
       "Crowdsale: payment token unaccepted"
     );
 
     await expectRevert(
-      ejsCrowdsale.buyTokensFor(defaultBuyAccount, ejsToken.address, BN_ONE, {
+      finaCrowdsale.buyTokensFor(defaultBuyAccount, ejsToken.address, BN_ONE, {
         from: notWhitelistedBuyAccount,
       }),
       "Crowdsale: payment token unaccepted"
@@ -1098,21 +1034,21 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should not allow to buy for zero lots", async () => {
-    const notWhitelistedBuyAccount = accounts[6];
+    const notWhitelistedBuyAccount = accounts[8];
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
 
     for (let i = 0; i < expectPaymentTokens.length; i++) {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       await expectRevert(
-        ejsCrowdsale.buyTokens(expectPaymentTokens[i], BN_ZERO, {
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ZERO, {
           from: defaultBuyAccount,
         }),
         "Crowdsale: zero lots"
       );
 
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(defaultBuyAccount, expectPaymentTokens[i], BN_ZERO, {
+        finaCrowdsale.buyTokensFor(defaultBuyAccount, expectPaymentTokens[i], BN_ZERO, {
           from: notWhitelistedBuyAccount,
         }),
         "Crowdsale: zero lots"
@@ -1121,10 +1057,9 @@ describe("EjsCrowdsale", () => {
   });
 
   it("should not allow to buy while paused", async () => {
-    const lotSize = new BN(crowdsaleLotSize.toString());
+    const lotSize = defaultBuyWhitelistAmount;
     const rate = new BN(crowdsaleRate.toString());
-    const expectBuyAccount = accounts[6];
-    const expectSellAccount = await ejsCrowdsale.wallet();
+    const expectSellAccount = await finaCrowdsale.wallet();
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
     const expectPaymentDecimal = new BN(crowdsalePaymentDecimal.toString());
     const expectPaymentDecimals = [expectPaymentDecimal, expectPaymentDecimal];
@@ -1132,62 +1067,67 @@ describe("EjsCrowdsale", () => {
     // advance to opening time
     await time.increaseTo(defaultCrowdsaleOpeningTime.add(time.duration.seconds(1)));
 
+    const expectBuyWeiAmount = calculateWeiAmount(lotSize, BN_ONE, rate);
+
     for (let i = 0; i < expectPaymentTokens.length; i++) {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       const scale = new BN("10").pow(new BN("18").sub(expectPaymentDecimals[i]));
 
-      await addCapital(expectPaymentTokens[i], defaultBuyAccount, ether("200"), scale);
-      await addCapital(expectPaymentTokens[i], expectBuyAccount, ether("200"), scale);
+      const expectBuyAccount0 = accounts[10 + i * 2];
+      const expectBuyAccount1 = accounts[10 + i * 2 + 1];
 
-      await ejsCrowdsale.pause({ from: defaultCrowdsaleAdmin });
+      await addEjsToken(expectBuyAccount0, ether(MIN_TOKEN_HOLD_AMOUNT));
+      await finaWhitelist.addWhitelisted(expectBuyAccount0, defaultBuyWhitelistAmount, {
+        from: defaultGovernanceAccount,
+      });
+
+      await addEjsToken(expectBuyAccount1, ether(MIN_TOKEN_HOLD_AMOUNT));
+      await finaWhitelist.addWhitelisted(expectBuyAccount1, defaultBuyWhitelistAmount, {
+        from: defaultGovernanceAccount,
+      });
+
+      const expectTotalBuyWeiAmount = expectBuyWeiAmount.mul(new BN("2"));
+      await addCapital(expectPaymentTokens[i], expectBuyAccount0, expectTotalBuyWeiAmount, scale);
+
+      await finaCrowdsale.pause({ from: defaultCrowdsaleAdmin });
 
       await expectRevert(
-        ejsCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, { from: defaultBuyAccount }),
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, { from: expectBuyAccount0 }),
         "Pausable: paused"
       );
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(defaultBuyAccount, expectPaymentTokens[i], BN_ONE, {
-          from: expectBuyAccount,
+        finaCrowdsale.buyTokensFor(expectBuyAccount1, expectPaymentTokens[i], BN_ONE, {
+          from: expectBuyAccount0,
         }),
         "Pausable: paused"
       );
 
-      await ejsCrowdsale.unpause({ from: defaultCrowdsaleAdmin });
-
-      const expectBuyWeiAmount = calculateWeiAmount(lotSize, BN_ONE, rate);
+      await finaCrowdsale.unpause({ from: defaultCrowdsaleAdmin });
 
       const sellerUsdBalanceBeforeBuy01 = await approveCrowdsale(
         expectPaymentTokens[i],
-        defaultBuyAccount,
-        expectBuyWeiAmount,
+        expectBuyAccount0,
+        expectTotalBuyWeiAmount,
         scale,
         expectSellAccount
       );
 
       await assert.doesNotReject(
-        async () => await ejsCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, { from: defaultBuyAccount })
-      );
-
-      const sellerUsdBalanceBeforeBuy02 = await approveCrowdsale(
-        expectPaymentTokens[i],
-        expectBuyAccount,
-        expectBuyWeiAmount,
-        scale,
-        expectSellAccount
+        async () => await finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, { from: expectBuyAccount0 })
       );
 
       await assert.doesNotReject(
         async () =>
-          await ejsCrowdsale.buyTokensFor(defaultBuyAccount, expectPaymentTokens[i], BN_ONE, {
-            from: expectBuyAccount,
+          await finaCrowdsale.buyTokensFor(expectBuyAccount1, expectPaymentTokens[i], BN_ONE, {
+            from: expectBuyAccount0,
           })
       );
     }
   });
 
   it("should not allow to buy tokens when closed", async () => {
-    const expectBuyAccount = accounts[6];
+    const expectBuyAccount = accounts[8];
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
 
     // advance to just before opening time
@@ -1199,14 +1139,14 @@ describe("EjsCrowdsale", () => {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       await expectRevert(
-        ejsCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
           from: expectBuyAccount,
         }),
         "TimedCrowdsaleHelper: not open"
       );
 
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(defaultBuyAccount, expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokensFor(defaultBuyAccount, expectPaymentTokens[i], BN_ONE, {
           from: expectBuyAccount,
         }),
         "TimedCrowdsaleHelper: not open"
@@ -1222,14 +1162,14 @@ describe("EjsCrowdsale", () => {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       await expectRevert(
-        ejsCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
           from: expectBuyAccount,
         }),
         "TimedCrowdsaleHelper: not open"
       );
 
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], BN_ONE, {
           from: defaultBuyAccount,
         }),
         "TimedCrowdsaleHelper: not open"
@@ -1237,8 +1177,8 @@ describe("EjsCrowdsale", () => {
     }
   });
 
-  it("should not allow not whitelisted address to buy tokens", async () => {
-    const expectBuyAccount = accounts[6];
+  it("should not allow non EJS token holders to buy tokens", async () => {
+    const expectBuyAccount = accounts[8];
     const expectPaymentTokens = [usdcMock.address, usdtMock.address];
 
     // advance to opening time
@@ -1248,14 +1188,70 @@ describe("EjsCrowdsale", () => {
       // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
 
       await expectRevert(
-        ejsCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
+          from: expectBuyAccount,
+        }),
+        "HoldErc20TokenCrowdsaleHelper: account hold less than min'"
+      );
+
+      await expectRevert(
+        finaCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], BN_ONE, {
+          from: defaultBuyAccount,
+        }),
+        "HoldErc20TokenCrowdsaleHelper: account hold less than min'"
+      );
+    }
+  });
+
+  it("should not allow insufficient EJS token holders to buy tokens", async () => {
+    const expectBuyAccount = accounts[8];
+    const expectPaymentTokens = [usdcMock.address, usdtMock.address];
+
+    // advance to opening time
+    await time.increaseTo(defaultCrowdsaleOpeningTime.add(time.duration.seconds(1)));
+
+    await addEjsToken(expectBuyAccount, ether(MIN_TOKEN_HOLD_AMOUNT).sub(BN_ONE));
+
+    for (let i = 0; i < expectPaymentTokens.length; i++) {
+      // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
+
+      await expectRevert(
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
+          from: expectBuyAccount,
+        }),
+        "HoldErc20TokenCrowdsaleHelper: account hold less than min'"
+      );
+
+      await expectRevert(
+        finaCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], BN_ONE, {
+          from: defaultBuyAccount,
+        }),
+        "HoldErc20TokenCrowdsaleHelper: account hold less than min'"
+      );
+    }
+  });
+
+  it("should not allow not whitelisted address to buy tokens", async () => {
+    const expectBuyAccount = accounts[8];
+    const expectPaymentTokens = [usdcMock.address, usdtMock.address];
+
+    // advance to opening time
+    await time.increaseTo(defaultCrowdsaleOpeningTime.add(time.duration.seconds(1)));
+
+    await addEjsToken(expectBuyAccount, ether(MIN_TOKEN_HOLD_AMOUNT));
+
+    for (let i = 0; i < expectPaymentTokens.length; i++) {
+      // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
+
+      await expectRevert(
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], BN_ONE, {
           from: expectBuyAccount,
         }),
         "WhitelistCrowdsaleHelper: account not whitelisted"
       );
 
       await expectRevert(
-        ejsCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], BN_ONE, {
+        finaCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], BN_ONE, {
           from: defaultBuyAccount,
         }),
         "WhitelistCrowdsaleHelper: account not whitelisted"
@@ -1263,10 +1259,67 @@ describe("EjsCrowdsale", () => {
     }
   });
 
+  it("should not allow user to buy more tokens than allocated", async () => {
+    const expectBuyAccount = accounts[8];
+    const expectPaymentDecimal = new BN(crowdsalePaymentDecimal.toString());
+    const expectPaymentTokens = [usdcMock.address, usdtMock.address];
+    const expectPaymentDecimals = [expectPaymentDecimal, expectPaymentDecimal];
+    const lotSize = defaultBuyWhitelistAmount;
+    const rate = new BN(crowdsaleRate.toString());
+    const expectBuyLots = new BN(MAX_LOTS + 1);
+
+    // advance to opening time
+    await time.increaseTo(defaultCrowdsaleOpeningTime.add(time.duration.seconds(1)));
+
+    await addEjsToken(expectBuyAccount, ether(MIN_TOKEN_HOLD_AMOUNT));
+    await finaWhitelist.addWhitelisted(expectBuyAccount, defaultBuyWhitelistAmount, {
+      from: defaultGovernanceAccount,
+    });
+
+    for (let i = 0; i < expectPaymentTokens.length; i++) {
+      // console.log(`${i}: expectPaymentToken: ${expectPaymentTokens[i]}`);
+
+      const expectSellAccount = await finaCrowdsale.wallet();
+      const scale = new BN("10").pow(new BN("18").sub(expectPaymentDecimals[i]));
+      const expectBuyWeiAmount = calculateWeiAmount(lotSize, expectBuyLots, rate);
+
+      await addCapital(expectPaymentTokens[i], expectBuyAccount, expectBuyWeiAmount, scale);
+      const sellerUsdBalanceBeforeBuy = await approveCrowdsale(
+        expectPaymentTokens[i],
+        expectBuyAccount,
+        expectBuyWeiAmount,
+        scale,
+        expectSellAccount
+      );
+
+      // const tokensPurchasedByBeneficiary = await finaCrowdsale.getTokensPurchasedBy(expectBuyAccount);
+      // const beneficiaryBalanceAfterBuy = tokensPurchasedByBeneficiary.add(expectBuyTokenAmount);
+      // const beneficiaryCap = await finaCrowdsale.getBeneficiaryCap(expectBuyAccount);
+      // const beneficiaryNotExceedCap = beneficiaryBalanceAfterBuy <= beneficiaryCap;
+      // console.log(
+      //   `${i}: beneficiaryBalanceAfterBuy=${beneficiaryBalanceAfterBuy}, beneficiaryCap=${beneficiaryCap}, beneficiaryNotExceedCap=${beneficiaryNotExceedCap}`
+      // );
+
+      await expectRevert(
+        finaCrowdsale.buyTokens(expectPaymentTokens[i], expectBuyLots, {
+          from: expectBuyAccount,
+        }),
+        "FinaCrowdsale: beneficiary cap exceeded"
+      );
+
+      await expectRevert(
+        finaCrowdsale.buyTokensFor(expectBuyAccount, expectPaymentTokens[i], expectBuyLots, {
+          from: defaultBuyAccount,
+        }),
+        "FinaCrowdsale: beneficiary cap exceeded"
+      );
+    }
+  });
+
   it("should not allow get tokens purchased by beneficiary for zero address", async () => {
     await expectRevert(
-      ejsCrowdsale.getTokensPurchasedBy(ZERO_ADDRESS),
-      "IndividuallyCappedCrowdsale: zero beneficiary address"
+      finaCrowdsale.getTokensPurchasedBy(ZERO_ADDRESS),
+      "FinaWhitelistCrowdsaleHelper: zero beneficiary address"
     );
   });
 
@@ -1274,8 +1327,8 @@ describe("EjsCrowdsale", () => {
     const nonGovernanceAccount = accounts[9];
 
     const expectNewGovernanceAccount = nonGovernanceAccount;
-    await ejsCrowdsale.setGovernanceAccount(nonGovernanceAccount, { from: defaultGovernanceAccount });
-    const newGovernanceAccount = await ejsCrowdsale.governanceAccount();
+    await finaCrowdsale.setGovernanceAccount(nonGovernanceAccount, { from: defaultGovernanceAccount });
+    const newGovernanceAccount = await finaCrowdsale.governanceAccount();
 
     assert.strictEqual(
       newGovernanceAccount,
@@ -1284,13 +1337,13 @@ describe("EjsCrowdsale", () => {
     );
 
     await expectRevert(
-      ejsCrowdsale.setGovernanceAccount(defaultGovernanceAccount, { from: defaultGovernanceAccount }),
-      "EjsCrowdsale: sender unauthorized"
+      finaCrowdsale.setGovernanceAccount(defaultGovernanceAccount, { from: defaultGovernanceAccount }),
+      "FinaCrowdsale: sender unauthorized"
     );
 
     const expectGovernanceAccount = defaultGovernanceAccount;
-    await ejsCrowdsale.setGovernanceAccount(defaultGovernanceAccount, { from: expectNewGovernanceAccount });
-    const governanceAccount = await ejsCrowdsale.governanceAccount();
+    await finaCrowdsale.setGovernanceAccount(defaultGovernanceAccount, { from: expectNewGovernanceAccount });
+    const governanceAccount = await finaCrowdsale.governanceAccount();
 
     assert.strictEqual(
       governanceAccount,
@@ -1303,20 +1356,20 @@ describe("EjsCrowdsale", () => {
     const nonGovernanceAccount = accounts[9];
 
     await expectRevert(
-      ejsCrowdsale.setGovernanceAccount(nonGovernanceAccount, { from: nonGovernanceAccount }),
-      "EjsCrowdsale: sender unauthorized"
+      finaCrowdsale.setGovernanceAccount(nonGovernanceAccount, { from: nonGovernanceAccount }),
+      "FinaCrowdsale: sender unauthorized"
     );
 
     await expectRevert(
-      ejsCrowdsale.setGovernanceAccount(defaultCrowdsaleAdmin, { from: defaultCrowdsaleAdmin }),
-      "EjsCrowdsale: sender unauthorized"
+      finaCrowdsale.setGovernanceAccount(defaultCrowdsaleAdmin, { from: defaultCrowdsaleAdmin }),
+      "FinaCrowdsale: sender unauthorized"
     );
   });
 
   it("should not allow set governance account to zero address", async () => {
     await expectRevert(
-      ejsCrowdsale.setGovernanceAccount(ZERO_ADDRESS, { from: defaultGovernanceAccount }),
-      "EjsCrowdsale: zero account"
+      finaCrowdsale.setGovernanceAccount(ZERO_ADDRESS, { from: defaultGovernanceAccount }),
+      "FinaCrowdsale: zero account"
     );
   });
 
@@ -1324,8 +1377,8 @@ describe("EjsCrowdsale", () => {
     const nonCrowdsaleAdmin = accounts[9];
 
     const expectNewCrowdsaleAdmin = nonCrowdsaleAdmin;
-    await ejsCrowdsale.setCrowdsaleAdmin(nonCrowdsaleAdmin, { from: defaultGovernanceAccount });
-    const newCrowdsaleAdmin = await ejsCrowdsale.crowdsaleAdmin();
+    await finaCrowdsale.setCrowdsaleAdmin(nonCrowdsaleAdmin, { from: defaultGovernanceAccount });
+    const newCrowdsaleAdmin = await finaCrowdsale.crowdsaleAdmin();
 
     assert.strictEqual(
       newCrowdsaleAdmin,
@@ -1334,8 +1387,8 @@ describe("EjsCrowdsale", () => {
     );
 
     const expectCrowdsaleAdmin = defaultCrowdsaleAdmin;
-    await ejsCrowdsale.setCrowdsaleAdmin(defaultCrowdsaleAdmin, { from: defaultGovernanceAccount });
-    const crowdsaleAdmin = await ejsCrowdsale.crowdsaleAdmin();
+    await finaCrowdsale.setCrowdsaleAdmin(defaultCrowdsaleAdmin, { from: defaultGovernanceAccount });
+    const crowdsaleAdmin = await finaCrowdsale.crowdsaleAdmin();
 
     assert.strictEqual(
       crowdsaleAdmin,
@@ -1348,20 +1401,20 @@ describe("EjsCrowdsale", () => {
     const nonGovernanceAccount = accounts[9];
 
     await expectRevert(
-      ejsCrowdsale.setCrowdsaleAdmin(nonGovernanceAccount, { from: nonGovernanceAccount }),
-      "EjsCrowdsale: sender unauthorized"
+      finaCrowdsale.setCrowdsaleAdmin(nonGovernanceAccount, { from: nonGovernanceAccount }),
+      "FinaCrowdsale: sender unauthorized"
     );
 
     await expectRevert(
-      ejsCrowdsale.setCrowdsaleAdmin(defaultCrowdsaleAdmin, { from: defaultCrowdsaleAdmin }),
-      "EjsCrowdsale: sender unauthorized"
+      finaCrowdsale.setCrowdsaleAdmin(defaultCrowdsaleAdmin, { from: defaultCrowdsaleAdmin }),
+      "FinaCrowdsale: sender unauthorized"
     );
   });
 
   it("should not allow set crowdsale admin to zero address", async () => {
     await expectRevert(
-      ejsCrowdsale.setCrowdsaleAdmin(ZERO_ADDRESS, { from: defaultGovernanceAccount }),
-      "EjsCrowdsale: zero account"
+      finaCrowdsale.setCrowdsaleAdmin(ZERO_ADDRESS, { from: defaultGovernanceAccount }),
+      "FinaCrowdsale: zero account"
     );
   });
 
@@ -1370,7 +1423,7 @@ describe("EjsCrowdsale", () => {
     const expectCrowdsaleAdmin = defaultCrowdsaleAdmin;
 
     const expectPausedBeforePause = false;
-    const paused = await ejsCrowdsale.paused();
+    const paused = await finaCrowdsale.paused();
 
     assert.strictEqual(
       paused,
@@ -1378,14 +1431,14 @@ describe("EjsCrowdsale", () => {
       `Paused before pause is ${paused} instead of ${expectPausedBeforePause}`
     );
 
-    const pause = await ejsCrowdsale.pause({ from: expectCrowdsaleAdmin });
+    const pause = await finaCrowdsale.pause({ from: expectCrowdsaleAdmin });
 
     expectEvent(pause, "Paused", {
       account: expectCrowdsaleAdmin,
     });
 
     const expectPausedAfterPause = true;
-    const pausedAfterPause = await ejsCrowdsale.paused();
+    const pausedAfterPause = await finaCrowdsale.paused();
 
     assert.strictEqual(
       pausedAfterPause,
@@ -1393,18 +1446,18 @@ describe("EjsCrowdsale", () => {
       `Paused after pause is ${pausedAfterPause} instead of ${expectPausedAfterPause}`
     );
 
-    await expectRevert(ejsCrowdsale.pause({ from: nonCrowdsaleAdmin }), "EjsCrowdsale: sender unauthorized");
+    await expectRevert(finaCrowdsale.pause({ from: nonCrowdsaleAdmin }), "FinaCrowdsale: sender unauthorized");
 
-    await expectRevert(ejsCrowdsale.pause({ from: expectCrowdsaleAdmin }), "Pausable: paused");
+    await expectRevert(finaCrowdsale.pause({ from: expectCrowdsaleAdmin }), "Pausable: paused");
 
-    const unpause = await ejsCrowdsale.unpause({ from: expectCrowdsaleAdmin });
+    const unpause = await finaCrowdsale.unpause({ from: expectCrowdsaleAdmin });
 
     expectEvent(unpause, "Unpaused", {
       account: expectCrowdsaleAdmin,
     });
 
     const expectPausedAfterUnpause = false;
-    const pausedAfterUnpause = await ejsCrowdsale.paused();
+    const pausedAfterUnpause = await finaCrowdsale.paused();
 
     assert.strictEqual(
       pausedAfterUnpause,
@@ -1412,9 +1465,9 @@ describe("EjsCrowdsale", () => {
       `Paused after unpause is ${pausedAfterUnpause} instead of ${expectPausedAfterUnpause}`
     );
 
-    await expectRevert(ejsCrowdsale.unpause({ from: nonCrowdsaleAdmin }), "EjsCrowdsale: sender unauthorized");
+    await expectRevert(finaCrowdsale.unpause({ from: nonCrowdsaleAdmin }), "FinaCrowdsale: sender unauthorized");
 
-    await expectRevert(ejsCrowdsale.unpause({ from: expectCrowdsaleAdmin }), "Pausable: not paused");
+    await expectRevert(finaCrowdsale.unpause({ from: expectCrowdsaleAdmin }), "Pausable: not paused");
   });
 
   it("should only allow crowdsale admin to extend closing time", async () => {
@@ -1423,8 +1476,8 @@ describe("EjsCrowdsale", () => {
     const expectClosingTimeBeforeExtend = defaultCrowdsaleClosingTime;
     const expectHasClosedBeforeExtend = false;
 
-    const closingTimeBeforeExtend = await ejsCrowdsale.closingTime();
-    const hasClosedBeforeExtend = await ejsCrowdsale.hasClosed();
+    const closingTimeBeforeExtend = await finaCrowdsale.closingTime();
+    const hasClosedBeforeExtend = await finaCrowdsale.hasClosed();
 
     assert.ok(
       closingTimeBeforeExtend.eq(expectClosingTimeBeforeExtend),
@@ -1440,15 +1493,15 @@ describe("EjsCrowdsale", () => {
     const expectClosingTimeAfterExtend = defaultCrowdsaleClosingTime.add(time.duration.minutes(30));
     const expectHasClosedAfterExtend = false;
 
-    const extendTime = await ejsCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: defaultCrowdsaleAdmin });
+    const extendTime = await finaCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: defaultCrowdsaleAdmin });
 
     expectEvent(extendTime, "TimedCrowdsaleExtended", {
       prevClosingTime: expectClosingTimeBeforeExtend,
       newClosingTime: expectClosingTimeAfterExtend,
     });
 
-    const closingTimeAfterExtend = await ejsCrowdsale.closingTime();
-    const hasClosedAfterExtend = await ejsCrowdsale.hasClosed();
+    const closingTimeAfterExtend = await finaCrowdsale.closingTime();
+    const hasClosedAfterExtend = await finaCrowdsale.hasClosed();
 
     assert.ok(
       closingTimeAfterExtend.eq(expectClosingTimeAfterExtend),
@@ -1462,12 +1515,12 @@ describe("EjsCrowdsale", () => {
     );
 
     await expectRevert(
-      ejsCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: nonCrowdsaleAdmin }),
-      "EjsCrowdsale: sender unauthorized"
+      finaCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: nonCrowdsaleAdmin }),
+      "FinaCrowdsale: sender unauthorized"
     );
 
     await expectRevert(
-      ejsCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: defaultCrowdsaleAdmin }),
+      finaCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: defaultCrowdsaleAdmin }),
       "TimedCrowdsaleHelper: before current closing time"
     );
 
@@ -1476,76 +1529,16 @@ describe("EjsCrowdsale", () => {
     const expectIsOpen = false;
     const expectHasClosed = true;
 
-    const isOpen = await ejsCrowdsale.isOpen();
-    const hasClosed = await ejsCrowdsale.hasClosed();
+    const isOpen = await finaCrowdsale.isOpen();
+    const hasClosed = await finaCrowdsale.hasClosed();
 
     assert.strictEqual(isOpen, expectIsOpen, `Is open is ${isOpen} instead of ${expectIsOpen}`);
 
     assert.strictEqual(hasClosed, expectHasClosed, `Has closed is ${hasClosed} instead of ${expectHasClosed}`);
 
     await expectRevert(
-      ejsCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: defaultCrowdsaleAdmin }),
+      finaCrowdsale.extendTime(expectClosingTimeAfterExtend, { from: defaultCrowdsaleAdmin }),
       "TimedCrowdsaleHelper: already closed"
-    );
-  });
-
-  it("should only allow crowdsale admin to start distribution", async () => {
-    const nonCrowdsaleAdmin = accounts[9];
-
-    const expectStartDistributionAccount = ejsCrowdsale.address;
-    const expectScheduleStartTimestampBeforeStartDistribution = BN_ZERO;
-    const expectScheduleStartTimestampAfterStartDistribution = defaultScheduleStartTimestamp;
-
-    const scheduleStartTimestampBeforeStartDistribution = await vesting.scheduleStartTimestamp();
-
-    assert.ok(
-      scheduleStartTimestampBeforeStartDistribution.eq(expectScheduleStartTimestampBeforeStartDistribution),
-      `Schedule start timestamp before start distribution is ${scheduleStartTimestampBeforeStartDistribution} instead of ${expectScheduleStartTimestampBeforeStartDistribution}`
-    );
-
-    const startDistribution = await ejsCrowdsale.startDistribution(defaultScheduleStartTimestamp, {
-      from: defaultCrowdsaleAdmin,
-    });
-
-    await expectEvent.inTransaction(startDistribution.tx, vesting, "ScheduleStartTimestampSet", {
-      account: expectStartDistributionAccount,
-      newScheduleStartTimestamp: expectScheduleStartTimestampAfterStartDistribution,
-      oldScheduleStartTimestamp: expectScheduleStartTimestampBeforeStartDistribution,
-    });
-
-    const scheduleStartTimestampAfterStartDistribution = await vesting.scheduleStartTimestamp();
-
-    assert.ok(
-      scheduleStartTimestampAfterStartDistribution.eq(expectScheduleStartTimestampAfterStartDistribution),
-      `Schedule start timestamp after start distribution is ${scheduleStartTimestampAfterStartDistribution} instead of ${expectScheduleStartTimestampAfterStartDistribution}`
-    );
-
-    await expectRevert(
-      ejsCrowdsale.startDistribution(expectScheduleStartTimestampAfterStartDistribution, { from: nonCrowdsaleAdmin }),
-      "EjsCrowdsale: sender unauthorized"
-    );
-
-    await expectRevert(
-      ejsCrowdsale.startDistribution(defaultCrowdsaleClosingTime.sub(time.duration.seconds(1)), {
-        from: defaultCrowdsaleAdmin,
-      }),
-      "EjsCrowdsale: must be after closing time"
-    );
-
-    await time.increaseTo(expectScheduleStartTimestampAfterStartDistribution.add(time.duration.seconds(1)));
-
-    await expectRevert(
-      ejsCrowdsale.startDistribution(expectScheduleStartTimestampAfterStartDistribution, {
-        from: defaultCrowdsaleAdmin,
-      }),
-      "Vesting: start before current timestamp"
-    );
-
-    await expectRevert(
-      ejsCrowdsale.startDistribution(expectScheduleStartTimestampAfterStartDistribution.add(time.duration.hours(1)), {
-        from: defaultCrowdsaleAdmin,
-      }),
-      "Vesting: already started"
     );
   });
 
@@ -1569,6 +1562,10 @@ describe("EjsCrowdsale", () => {
     }
   }
 
+  async function addEjsToken(account, weiAmount) {
+    await ejsToken.mint(account, weiAmount, { from: defaultGovernanceAccount });
+  }
+
   async function approveCrowdsale(tokenAddress, buyerAddress, weiAmount, scale, sellerAddress) {
     const expectAllowance = weiAmount.div(scale);
 
@@ -1580,19 +1577,19 @@ describe("EjsCrowdsale", () => {
       case usdcMock.address:
         // console.log(`USDC mock`);
 
-        approve = await usdcMock.approve(ejsCrowdsale.address, weiAmount.div(scale), {
+        approve = await usdcMock.approve(finaCrowdsale.address, weiAmount.div(scale), {
           from: buyerAddress,
         });
-        allowance = await usdcMock.allowance(buyerAddress, ejsCrowdsale.address);
+        allowance = await usdcMock.allowance(buyerAddress, finaCrowdsale.address);
         sellerUsdBalanceBeforeBuy = await usdcMock.balanceOf(sellerAddress);
         break;
       case usdtMock.address:
         // console.log(`USDT mock`);
 
-        approve = await usdtMock.approve(ejsCrowdsale.address, weiAmount.div(scale), {
+        approve = await usdtMock.approve(finaCrowdsale.address, weiAmount.div(scale), {
           from: buyerAddress,
         });
-        allowance = await usdtMock.allowance(buyerAddress, ejsCrowdsale.address);
+        allowance = await usdtMock.allowance(buyerAddress, finaCrowdsale.address);
         sellerUsdBalanceBeforeBuy = await usdtMock.balanceOf(sellerAddress);
         break;
       default:
@@ -1605,7 +1602,7 @@ describe("EjsCrowdsale", () => {
   }
 
   function calculateTokenAmount(lotSize, lots) {
-    return lots.mul(lotSize).mul(TOKEN_SELLING_SCALE);
+    return lots.mul(lotSize);
   }
 
   function calculateWeiAmount(lotSize, lots, rate) {

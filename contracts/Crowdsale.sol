@@ -169,10 +169,21 @@ contract Crowdsale is ReentrancyGuard, ICrowdsale {
     }
 
     /**
+     * @param beneficiary Address performing the token purchase
      * @return lotSize_ lot size of token being sold
      */
-    function lotSize() public view override returns (uint256 lotSize_) {
-        lotSize_ = _lotsInfo.lotSize;
+    function lotSize(address beneficiary)
+        public
+        view
+        override
+        returns (uint256 lotSize_)
+    {
+        require(
+            beneficiary != address(0),
+            "Crowdsale: zero beneficiary address"
+        );
+
+        lotSize_ = _lotSize(beneficiary);
     }
 
     /**
@@ -216,42 +227,51 @@ contract Crowdsale is ReentrancyGuard, ICrowdsale {
     /**
      * @dev Override to extend the way in which payment token is converted to tokens.
      * @param lots Number of lots of token being sold
+     * @param beneficiary Address receiving the tokens
      * @return tokenAmount Number of tokens being sold that will be purchased
      */
-    function getTokenAmount(uint256 lots)
+    function getTokenAmount(uint256 lots, address beneficiary)
         external
         view
         override
         returns (uint256 tokenAmount)
     {
         require(lots > 0, "Crowdsale: zero lots");
+        require(
+            beneficiary != address(0),
+            "Crowdsale: zero beneficiary address"
+        );
 
-        tokenAmount = _getTokenAmount(lots);
+        tokenAmount = _getTokenAmount(lots, beneficiary);
     }
 
     /**
      * @dev Override to extend the way in which payment token is converted to tokens.
      * @param paymentToken ERC20 payment token address
      * @param lots Number of lots of token being sold
+     * @param beneficiary Address receiving the tokens
      * @return weiAmount Amount in wei of ERC20 payment token
      */
-    function getWeiAmount(address paymentToken, uint256 lots)
-        external
-        view
-        override
-        returns (uint256 weiAmount)
-    {
+    function getWeiAmount(
+        address paymentToken,
+        uint256 lots,
+        address beneficiary
+    ) external view override returns (uint256 weiAmount) {
         require(
             paymentToken != address(0),
             "Crowdsale: zero payment token address"
         );
         require(lots > 0, "Crowdsale: zero lots");
         require(
+            beneficiary != address(0),
+            "Crowdsale: zero beneficiary address"
+        );
+        require(
             isPaymentToken(paymentToken),
             "Crowdsale: payment token unaccepted"
         );
 
-        weiAmount = _getWeiAmount(paymentToken, lots);
+        weiAmount = _getWeiAmount(paymentToken, lots, beneficiary);
     }
 
     /**
@@ -303,9 +323,9 @@ contract Crowdsale is ReentrancyGuard, ICrowdsale {
         );
 
         // calculate token amount to be created
-        uint256 tokenAmount = _getTokenAmount(lots);
+        uint256 tokenAmount = _getTokenAmount(lots, beneficiary);
         // calculate wei amount to transfer to wallet
-        uint256 weiAmount = _getWeiAmount(paymentToken, lots);
+        uint256 weiAmount = _getWeiAmount(paymentToken, lots, beneficiary);
 
         _preValidatePurchase(beneficiary, paymentToken, weiAmount, tokenAmount);
 
@@ -372,6 +392,18 @@ contract Crowdsale is ReentrancyGuard, ICrowdsale {
         returns (uint256 rate_)
     {
         rate_ = _rates[paymentToken];
+    }
+
+    /**
+     * @return lotSize_ lot size of token being sold
+     */
+    function _lotSize(address)
+        internal
+        view
+        virtual
+        returns (uint256 lotSize_)
+    {
+        lotSize_ = _lotsInfo.lotSize;
     }
 
     /**
@@ -461,7 +493,7 @@ contract Crowdsale is ReentrancyGuard, ICrowdsale {
      * @param lots Number of lots of token being sold
      * @return tokenAmount Number of tokens that will be purchased
      */
-    function _getTokenAmount(uint256 lots)
+    function _getTokenAmount(uint256 lots, address)
         internal
         view
         virtual
@@ -474,16 +506,16 @@ contract Crowdsale is ReentrancyGuard, ICrowdsale {
      * @dev Override to extend the way in which payment token is converted to tokens.
      * @param paymentToken ERC20 payment token address
      * @param lots Number of lots of token being sold
+     * @param beneficiary Address receiving the tokens
      * @return weiAmount Amount in wei of ERC20 payment token
      */
-    function _getWeiAmount(address paymentToken, uint256 lots)
-        internal
-        view
-        virtual
-        returns (uint256 weiAmount)
-    {
+    function _getWeiAmount(
+        address paymentToken,
+        uint256 lots,
+        address beneficiary
+    ) internal view virtual returns (uint256 weiAmount) {
         uint256 rate_ = _rate(paymentToken);
-        uint256 tokenAmount = _getTokenAmount(lots);
+        uint256 tokenAmount = _getTokenAmount(lots, beneficiary);
         weiAmount = tokenAmount.mul(rate_).div(TOKEN_SELLING_SCALE);
     }
 

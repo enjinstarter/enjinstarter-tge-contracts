@@ -153,10 +153,10 @@ describe("Vesting", () => {
     );
   });
 
-  it("should not allow initialization for zero interval", async () => {
+  it("should not allow initialization for zero interval and gap", async () => {
     await expectRevert(
-      testHelpers.newVesting(ejsToken.address, new BN("30"), ether("100"), ether("100"), BN_ZERO),
-      "Vesting: zero interval"
+      testHelpers.newVesting(ejsToken.address, new BN("30"), ether("100"), ether("100"), BN_ZERO, BN_ZERO),
+      "Vesting: zero interval and gap"
     );
   });
 
@@ -1398,7 +1398,7 @@ describe("Vesting", () => {
       from: defaultGovernanceAccount,
     });
 
-    // assumes percent release for each interval is 10% and number of intervals is 10
+    // assumes percent release for each interval is 50% and number of intervals is 1
     const expectVestedPercents = [
       [
         {
@@ -1806,6 +1806,197 @@ describe("Vesting", () => {
 
     await testVestedAmountForEachInterval(
       linearlyOverMonthWithThreeMonthsGapVesting,
+      beneficiary,
+      expectGrantAmount,
+      expectVestedPercents,
+      (blockTimestamp, startIntervalTimestamp, eachIntervalPercentRelease, intervalSecs) => {
+        const secondsIn = blockTimestamp.sub(startIntervalTimestamp);
+        return secondsIn.gte(intervalSecs)
+          ? eachIntervalPercentRelease
+          : secondsIn.mul(eachIntervalPercentRelease).div(intervalSecs);
+      }
+    );
+  });
+
+  it("should return correct vested amount for each interval using interval end with 100% release on start", async () => {
+    const beneficiary = accounts[5];
+    const expectGrantAmount = ether("412806.985178859091285000");
+
+    const cliffDurationDays = BN_ZERO;
+    const percentReleaseAtScheduleStart = ether("100");
+    const percentReleaseForEachInterval = ether("0");
+    const intervalDays = BN_ZERO;
+    const gapDays = new BN("1");
+    const numberOfIntervals = BN_ZERO;
+    const releaseMethod = new BN("0"); // IntervalEnd
+
+    const releaseAtStartAndLinearlyEveryMonthVesting = await testHelpers.newVesting(
+      ejsToken.address,
+      cliffDurationDays,
+      percentReleaseAtScheduleStart,
+      percentReleaseForEachInterval,
+      intervalDays,
+      gapDays,
+      numberOfIntervals,
+      releaseMethod
+    );
+    await ejsToken.mint(releaseAtStartAndLinearlyEveryMonthVesting.address, ether("1000000"), {
+      from: defaultGovernanceAccount,
+    });
+    await releaseAtStartAndLinearlyEveryMonthVesting.setVestingAdmin(defaultVestingAdmin, {
+      from: defaultGovernanceAccount,
+    });
+
+    // assumes percent release for each interval is 0% and number of intervals is 0
+    const expectVestedPercents = [];
+
+    await testVestedAmountForEachInterval(
+      releaseAtStartAndLinearlyEveryMonthVesting,
+      beneficiary,
+      expectGrantAmount,
+      expectVestedPercents,
+      (blockTimestamp, startIntervalTimestamp, eachIntervalPercentRelease, intervalSecs) => {
+        return BN_ZERO;
+      }
+    );
+  });
+
+  it("should return correct vested amount for each interval using linearly per second with 100% release on start", async () => {
+    const beneficiary = accounts[5];
+    const expectGrantAmount = ether("412806.985178859091285000");
+
+    const cliffDurationDays = BN_ZERO;
+    const percentReleaseAtScheduleStart = ether("100");
+    const percentReleaseForEachInterval = ether("0");
+    const intervalDays = BN_ZERO;
+    const gapDays = new BN("1");
+    const numberOfIntervals = BN_ZERO;
+    const releaseMethod = new BN("1"); // LinearlyPerSecond
+
+    const releaseAtStartAndLinearlyEveryMonthVesting = await testHelpers.newVesting(
+      ejsToken.address,
+      cliffDurationDays,
+      percentReleaseAtScheduleStart,
+      percentReleaseForEachInterval,
+      intervalDays,
+      gapDays,
+      numberOfIntervals,
+      releaseMethod
+    );
+    await ejsToken.mint(releaseAtStartAndLinearlyEveryMonthVesting.address, ether("1000000"), {
+      from: defaultGovernanceAccount,
+    });
+    await releaseAtStartAndLinearlyEveryMonthVesting.setVestingAdmin(defaultVestingAdmin, {
+      from: defaultGovernanceAccount,
+    });
+
+    // assumes percent release for each interval is 0% and number of intervals is 0
+    const expectVestedPercents = [];
+
+    await testVestedAmountForEachInterval(
+      releaseAtStartAndLinearlyEveryMonthVesting,
+      beneficiary,
+      expectGrantAmount,
+      expectVestedPercents,
+      (blockTimestamp, startIntervalTimestamp, eachIntervalPercentRelease, intervalSecs) => {
+        const secondsIn = blockTimestamp.sub(startIntervalTimestamp);
+        return secondsIn.gte(intervalSecs)
+          ? eachIntervalPercentRelease
+          : secondsIn.mul(eachIntervalPercentRelease).div(intervalSecs);
+      }
+    );
+  });
+
+  it("should return correct vested amount for each interval with six months cliff and 20% release at interval start every 3 months", async () => {
+    const beneficiary = accounts[5];
+    const expectGrantAmount = ether("107603.639895431633702000");
+
+    const cliffDurationDays = new BN("180");
+    const percentReleaseAtScheduleStart = BN_ZERO;
+    const percentReleaseForEachInterval = ether("20");
+    const intervalDays = new BN("0");
+    const gapDays = new BN("90");
+    const numberOfIntervals = new BN("5");
+    const releaseMethod = new BN("1"); // LinearlyPerSecond
+
+    const sixMonthsCliffAndLinearlyOverMonthWithThreeMonthsGapVesting = await testHelpers.newVesting(
+      ejsToken.address,
+      cliffDurationDays,
+      percentReleaseAtScheduleStart,
+      percentReleaseForEachInterval,
+      intervalDays,
+      gapDays,
+      numberOfIntervals,
+      releaseMethod
+    );
+    await ejsToken.mint(sixMonthsCliffAndLinearlyOverMonthWithThreeMonthsGapVesting.address, ether("1000000"), {
+      from: defaultGovernanceAccount,
+    });
+    await sixMonthsCliffAndLinearlyOverMonthWithThreeMonthsGapVesting.setVestingAdmin(defaultVestingAdmin, {
+      from: defaultGovernanceAccount,
+    });
+
+    // assumes percent release for each interval is 20% and number of intervals is 5
+    const expectVestedPercents = [
+      [
+        {
+          secondsIn: new BN("254720"),
+        }, // near start of gap
+        {
+          secondsIn: new BN("3529475"),
+        }, // near mid of gap
+        {
+          secondsIn: new BN("6796985"),
+        }, // near end of gap
+      ], // interval 0
+      [
+        {
+          secondsIn: new BN("473402"),
+        }, // near start of gap
+        {
+          secondsIn: new BN("3609928"),
+        }, // near mid of gap
+        {
+          secondsIn: new BN("7572620"),
+        }, // near end of gap
+      ], // interval 1
+      [
+        {
+          secondsIn: new BN("818553"),
+        }, // near start of gap
+        {
+          secondsIn: new BN("4295644"),
+        }, // near mid of gap
+        {
+          secondsIn: new BN("6295829"),
+        }, // near end of gap
+      ], // interval 2
+      [
+        {
+          secondsIn: new BN("701723"),
+        }, // near start of gap
+        {
+          secondsIn: new BN("3916447"),
+        }, // near mid of gap
+        {
+          secondsIn: new BN("6940973"),
+        }, // near end of gap
+      ], // interval 3
+      [
+        {
+          secondsIn: new BN("78280"),
+        }, // near start of gap
+        {
+          secondsIn: new BN("3710275"),
+        }, // near mid of gap
+        {
+          secondsIn: new BN("7732542"),
+        }, // near end of gap
+      ], // interval 4
+    ];
+
+    await testVestedAmountForEachInterval(
+      sixMonthsCliffAndLinearlyOverMonthWithThreeMonthsGapVesting,
       beneficiary,
       expectGrantAmount,
       expectVestedPercents,

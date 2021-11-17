@@ -66,7 +66,10 @@ contract Vesting is IVesting {
             percentReleaseForEachInterval <= PERCENT_100_WEI,
             "Vesting: percent release for each interval > 100%"
         );
-        require(intervalDays > 0, "Vesting: zero interval");
+        require(
+            intervalDays.add(gapDays) > 0,
+            "Vesting: zero interval and gap"
+        );
         require(
             percentReleaseAtScheduleStart.add(
                 percentReleaseForEachInterval.mul(numberOfIntervals)
@@ -335,9 +338,11 @@ contract Vesting is IVesting {
             SECONDS_IN_DAY
         );
         uint256 gapSeconds = vestingSchedule.gapDays.mul(SECONDS_IN_DAY);
-        uint256 scheduleEndTimestamp = cliffEndTimestamp
-            .add(intervalSeconds.mul(vestingSchedule.numberOfIntervals))
-            .add(gapSeconds.mul(vestingSchedule.numberOfIntervals.sub(1)));
+        uint256 scheduleEndTimestamp = vestingSchedule.numberOfIntervals > 0
+            ? cliffEndTimestamp
+                .add(intervalSeconds.mul(vestingSchedule.numberOfIntervals))
+                .add(gapSeconds.mul(vestingSchedule.numberOfIntervals.sub(1)))
+            : cliffEndTimestamp;
         if (block.timestamp >= scheduleEndTimestamp) {
             vestedAmount = vestingGrant.grantAmount;
             return vestedAmount;

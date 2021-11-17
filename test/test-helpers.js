@@ -126,6 +126,93 @@ async function newEjsCrowdsale(
   return await EjsCrowdsale.new(wallet, tokenSelling, crowdsaleInfo, lotsInfoValue, timeframe, paymentTokensInfo);
 }
 
+async function newFinaWhitelist() {
+  const FinaWhitelist = artifacts.require("FinaWhitelist");
+  return await FinaWhitelist.new();
+}
+
+async function newFinaCrowdsale(
+  wallet,
+  crowdsaleInfo, // { tokenCap, whitelistContract, tokenHold, minTokenAmount }
+  timeframe, // { openingTime, closingTime }
+  paymentTokensInfo, // { paymentToken, paymentDecimal, rate }
+  lotsInfo // { lotSize, maxLots }
+) {
+  const defaults = {
+    lotSize: BigNumber.from("25000"), // USD200 worth of tokens being sold
+    maxLots: BigNumber.from("1"),
+  };
+
+  const lotsInfoValue = await getValueOrDefault(lotsInfo, () => {
+    return {
+      lotSize: defaults.lotSize,
+      maxLots: defaults.maxLots,
+    };
+  });
+
+  const FinaCrowdsale = artifacts.require("FinaCrowdsale");
+  return await FinaCrowdsale.new(wallet, crowdsaleInfo, lotsInfoValue, timeframe, paymentTokensInfo);
+}
+
+async function newLaunchpadWhitelist() {
+  const LaunchpadWhitelist = artifacts.require("LaunchpadWhitelist");
+  return await LaunchpadWhitelist.new();
+}
+
+async function newLaunchpadCrowdsale(
+  wallet,
+  crowdsaleInfo, // { tokenCap, whitelistContract, /* tokenHold, minTokenAmount */ }
+  timeframe, // { openingTime, closingTime }
+  paymentTokensInfo, // { paymentToken, paymentDecimal, rate }
+  lotsInfo // { lotSize, maxLots }
+) {
+  const defaults = {
+    lotSize: BigNumber.from("25000"), // USD200 worth of tokens being sold
+    maxLots: BigNumber.from("1"),
+  };
+
+  const lotsInfoValue = await getValueOrDefault(lotsInfo, () => {
+    return {
+      lotSize: defaults.lotSize,
+      maxLots: defaults.maxLots,
+    };
+  });
+
+  const LaunchpadCrowdsale = artifacts.require("LaunchpadCrowdsale");
+  return await LaunchpadCrowdsale.new(wallet, crowdsaleInfo, lotsInfoValue, timeframe, paymentTokensInfo);
+}
+
+async function newLaunchpadCrowdsaleWithVesting(
+  wallet,
+  tokenSelling,
+  crowdsaleInfo, // { tokenCap, vestingContract, whitelistContract, /* tokenHold, minTokenAmount */ }
+  timeframe, // { openingTime, closingTime }
+  paymentTokensInfo, // { paymentToken, paymentDecimal, rate }
+  lotsInfo // { lotSize, maxLots }
+) {
+  const defaults = {
+    lotSize: BigNumber.from("25000"), // USD200 worth of tokens being sold
+    maxLots: BigNumber.from("1"),
+  };
+
+  const lotsInfoValue = await getValueOrDefault(lotsInfo, () => {
+    return {
+      lotSize: defaults.lotSize,
+      maxLots: defaults.maxLots,
+    };
+  });
+
+  const LaunchpadCrowdsaleWithVesting = artifacts.require("LaunchpadCrowdsaleWithVesting");
+  return await LaunchpadCrowdsaleWithVesting.new(
+    wallet,
+    tokenSelling,
+    crowdsaleInfo,
+    lotsInfoValue,
+    timeframe,
+    paymentTokensInfo
+  );
+}
+
 async function newIndividuallyCappedCrowdsaleHelper(tokenCap) {
   const defaults = {
     tokenCap: BigNumber.from("250000"), // max 10 lots (USD2000 worth of tokens being sold equivalent to 250000 tokens)
@@ -218,6 +305,11 @@ module.exports = {
   newVesting,
   newWhitelist,
   newEjsCrowdsale,
+  newFinaWhitelist,
+  newFinaCrowdsale,
+  newLaunchpadWhitelist,
+  newLaunchpadCrowdsale,
+  newLaunchpadCrowdsaleWithVesting,
   newIndividuallyCappedCrowdsaleHelper,
   newUsdcMock,
   newUsdtMock,

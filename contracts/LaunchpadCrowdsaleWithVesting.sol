@@ -5,29 +5,28 @@ pragma abicoder v2; // solhint-disable-line
 
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./CappedTokenSoldCrowdsaleHelper.sol";
-import "./IndividuallyCappedCrowdsaleHelper.sol";
+import "./LaunchpadWhitelistCrowdsaleHelper.sol";
+import "./NoDeliveryCrowdsale.sol";
 import "./TimedCrowdsaleHelper.sol";
 import "./VestedCrowdsale.sol";
-import "./WhitelistCrowdsaleHelper.sol";
-import "./interfaces/IEjsCrowdsale.sol";
+import "./interfaces/ILaunchpadCrowdsaleWithVesting.sol";
 
 /**
- * @title EjsCrowdsale
+ * @title LaunchpadCrowdsaleWithVesting
  * @author Enjinstarter
- * @dev Crowdsale where tokens are minted in each purchase.
+ * @dev Launchpad crowdsale where there is no delivery of tokens in each purchase.
  */
-contract EjsCrowdsale is
+contract LaunchpadCrowdsaleWithVesting is
     VestedCrowdsale,
     CappedTokenSoldCrowdsaleHelper,
-    IndividuallyCappedCrowdsaleHelper,
     TimedCrowdsaleHelper,
-    WhitelistCrowdsaleHelper,
+    LaunchpadWhitelistCrowdsaleHelper,
     Pausable,
-    IEjsCrowdsale
+    ILaunchpadCrowdsaleWithVesting
 {
     using SafeMath for uint256;
 
-    struct EjsCrowdsaleInfo {
+    struct LaunchpadCrowdsaleInfo {
         uint256 tokenCap;
         address vestingContract;
         address whitelistContract;
@@ -36,11 +35,11 @@ contract EjsCrowdsale is
     address public governanceAccount;
     address public crowdsaleAdmin;
 
-    // max 20 lots (USD4000 worth of tokens being sold equivalent to 500000 tokens)
+    // max 1 lot
     constructor(
         address wallet_,
         address tokenSelling_,
-        EjsCrowdsaleInfo memory crowdsaleInfo,
+        LaunchpadCrowdsaleInfo memory crowdsaleInfo,
         LotsInfo memory lotsInfo,
         Timeframe memory timeframe,
         PaymentTokenInfo[] memory paymentTokensInfo
@@ -48,18 +47,18 @@ contract EjsCrowdsale is
         Crowdsale(wallet_, tokenSelling_, lotsInfo, paymentTokensInfo)
         VestedCrowdsale(crowdsaleInfo.vestingContract)
         CappedTokenSoldCrowdsaleHelper(crowdsaleInfo.tokenCap)
-        IndividuallyCappedCrowdsaleHelper(
-            lotsInfo.maxLots.mul(lotsInfo.lotSize).mul(TOKEN_SELLING_SCALE)
-        )
         TimedCrowdsaleHelper(timeframe)
-        WhitelistCrowdsaleHelper(crowdsaleInfo.whitelistContract)
+        LaunchpadWhitelistCrowdsaleHelper(crowdsaleInfo.whitelistContract)
     {
         governanceAccount = msg.sender;
         crowdsaleAdmin = msg.sender;
     }
 
     modifier onlyBy(address account) {
-        require(msg.sender == account, "EjsCrowdsale: sender unauthorized");
+        require(
+            msg.sender == account,
+            "LaunchpadCrowdsaleWithVesting: sender unauthorized"
+        );
         _;
     }
 
@@ -72,31 +71,25 @@ contract EjsCrowdsale is
         override
         returns (uint256 availableLots)
     {
-        require(
-            beneficiary != address(0),
-            "EjsCrowdsale: zero beneficiary address"
-        );
-
         if (!whitelisted(beneficiary)) {
             return 0;
         }
 
-        availableLots = _getAvailableTokensFor(beneficiary)
-            .div(lotSize(beneficiary))
-            .div(TOKEN_SELLING_SCALE);
+        availableLots = _getAvailableTokensFor(beneficiary).div(
+            getBeneficiaryCap(beneficiary)
+        );
     }
 
     /**
-     * @return remainingLots Remaining number of lots for crowdsale
+     * @return remainingTokens Remaining number of tokens for crowdsale
      */
-    function getRemainingLots()
+    function getRemainingTokens()
         external
         view
         override
-        returns (uint256 remainingLots)
+        returns (uint256 remainingTokens)
     {
-        uint256 remainingTokens = tokenCap().sub(tokensSold);
-        remainingLots = remainingTokens.div(lotSize(address(this)));
+        remainingTokens = tokenCap().sub(tokensSold);
     }
 
     function pause() external override onlyBy(crowdsaleAdmin) {
@@ -122,7 +115,7 @@ contract EjsCrowdsale is
     {
         require(
             scheduleStartTimestamp > closingTime(),
-            "EjsCrowdsale: must be after closing time"
+            "LaunchpadCrowdsaleWithVesting: must be after closing time"
         );
         _startDistribution(scheduleStartTimestamp);
     }
@@ -132,7 +125,10 @@ contract EjsCrowdsale is
         override
         onlyBy(governanceAccount)
     {
-        require(account != address(0), "EjsCrowdsale: zero account");
+        require(
+            account != address(0),
+            "LaunchpadCrowdsaleWithVesting: zero account"
+        );
 
         governanceAccount = account;
     }
@@ -142,9 +138,40 @@ contract EjsCrowdsale is
         override
         onlyBy(governanceAccount)
     {
-        require(account != address(0), "EjsCrowdsale: zero account");
+        require(
+            account != address(0),
+            "LaunchpadCrowdsaleWithVesting: zero account"
+        );
 
         crowdsaleAdmin = account;
+    }
+
+    /**
+     * @param beneficiary Address receiving the tokens
+     * @return lotSize_ lot size of token being sold
+     */
+    function _lotSize(address beneficiary)
+        internal
+        view
+        override
+        returns (uint256 lotSize_)
+    {
+        lotSize_ = getBeneficiaryCap(beneficiary);
+    }
+
+    /**
+     * @dev Override to extend the way in which payment token is converted to tokens.
+     * @param lots Number of lots of token being sold
+     * @param beneficiary Address receiving the tokens
+     * @return tokenAmount Number of tokens that will be purchased
+     */
+    function _getTokenAmount(uint256 lots, address beneficiary)
+        internal
+        view
+        override
+        returns (uint256 tokenAmount)
+    {
+        tokenAmount = lots.mul(_lotSize(beneficiary));
     }
 
     /**
@@ -162,12 +189,19 @@ contract EjsCrowdsale is
         internal
         view
         override
-        tokenCapNotExceeded(tokensSold, tokenAmount)
-        beneficiaryCapNotExceeded(beneficiary, tokenAmount)
         whenNotPaused
         onlyWhileOpen
+        tokenCapNotExceeded(tokensSold, tokenAmount)
         isWhitelisted(beneficiary)
     {
+        // TODO: Investigate why modifier and require() don't work consistently for beneficiaryCapNotExceeded()
+        if (
+            getTokensPurchasedBy(beneficiary).add(tokenAmount) >
+            getBeneficiaryCap(beneficiary)
+        ) {
+            revert("LaunchpadCrowdsaleWithVesting: beneficiary cap exceeded");
+        }
+
         super._preValidatePurchase(
             beneficiary,
             paymentToken,
